@@ -317,7 +317,6 @@ window.addEventListener('beforeinstallprompt', event => {
 });
 window.addEventListener('appinstalled', () => {
   installPrompt = null;
-  document.getElementById('installBtn').hidden = true;
 });
 async function installApp(){
   if(!installPrompt){
@@ -327,7 +326,6 @@ async function installApp(){
   installPrompt.prompt();
   await installPrompt.userChoice;
   installPrompt = null;
-  document.getElementById('installBtn').hidden = true;
 }
 
 async function readSavedUrl(){
@@ -458,7 +456,7 @@ async function refreshContacts(){
 function updateKicker(){
   const totalPeople = Object.values(ledger).reduce((s,a)=>s+a.length,0);
   document.getElementById('kickerLine').innerHTML =
-    `Connected · <b>${companies.length} companies</b> · <b>${totalPeople} contacts</b> · <button onclick="disconnect()">change connection</button>`;
+    `Connected · <b>${companies.length} companies</b> · <b>${totalPeople} contacts</b> · <button onclick="disconnect()">change connection</button> <button class="install-btn" id="installBtn" onclick="installApp()" title="Install Contact Book on this device" aria-label="Install Contact Book on this device"><i class="fa-solid fa-download" aria-hidden="true"></i> Install app</button>`;
 }
 
 function disconnect(){
