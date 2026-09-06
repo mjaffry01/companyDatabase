@@ -446,7 +446,9 @@ function switchTab(tab){
 
 function contactsFor(name){ return ledger[name] || []; }
 
-function phoneDigits(phone){ return String(phone || '').replace(/[^\d]/g, ''); }
+function phoneDigits(phone){
+  return String(phone || '').replace(/[^\d]/g, '').replace(/^00/, '');
+}
 function linkedInSearchUrl(name, company){
   return 'https://www.linkedin.com/search/results/people/?keywords=' + encodeURIComponent(`${name} ${company}`);
 }
@@ -461,6 +463,10 @@ function contactActions(person, company){
       ${digits ? `<a href="sms:${escapeHtml(phone)}" title="Text ${escapeHtml(name)}" aria-label="Text ${escapeHtml(name)}"><i class="fa-solid fa-comment-sms" aria-hidden="true"></i></a>` : ''}
       <a href="${linkedInSearchUrl(name, company)}" target="_blank" rel="noopener" title="Find ${escapeHtml(name)} on LinkedIn" aria-label="Find ${escapeHtml(name)} on LinkedIn"><i class="fa-brands fa-linkedin" aria-hidden="true"></i></a>
     </div>`;
+}
+function emailLink(email){
+  const value = String(email || '').trim();
+  return `<a href="mailto:${encodeURIComponent(value)}">${escapeHtml(value)}</a>`;
 }
 
 function matchCompanies(query){
@@ -610,7 +616,7 @@ function renderPanel(companyName){
           <div class="contact-chip">
               <div>
                 <div class="who">${escapeHtml(p.name)}</div>
-                <div class="meta">${escapeHtml(p.phone)} · ${escapeHtml(p.email)}</div>
+                <div class="meta"><a href="tel:${escapeHtml(p.phone)}">${escapeHtml(p.phone)}</a> · ${emailLink(p.email)}</div>
                 ${contactActions(p, companyName)}
               </div>
           </div>
@@ -738,7 +744,7 @@ function renderBook(){
       <td class="company-cell" data-label="Company">${escapeHtml(company)}</td>
       <td data-label="Name">${escapeHtml(p.name)}</td>
       <td class="mono" data-label="Phone"><a href="tel:${escapeHtml(p.phone)}">${escapeHtml(p.phone)}</a>${contactActions(p, company)}</td>
-      <td class="mono" data-label="Email">${escapeHtml(p.email)}</td>
+      <td class="mono" data-label="Email">${emailLink(p.email)}</td>
     </tr>
   `).join('');
 }
