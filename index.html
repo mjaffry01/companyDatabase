@@ -198,7 +198,17 @@
     .company-actions{ gap:8px; }
     .company-actions .btn{ min-height:40px; }
     .contact-actions a{ width:42px; height:42px; font-size:21px; }
-    .ledger-footer{ overflow-x:auto; padding-left:18px; padding-right:18px; }
+    .ledger-footer{ overflow-x:visible; padding-left:18px; padding-right:18px; }
+    table.book{ min-width:0; display:block; }
+    table.book thead{ display:none; }
+    table.book tbody, table.book tr{ display:block; }
+    table.book tr{ padding:12px 0; border-bottom:1px solid #E4DAC2; }
+    table.book tr:last-child{ border-bottom:none; }
+    table.book td{ display:flex; align-items:flex-start; gap:10px; padding:5px 0; border:none; overflow-wrap:anywhere; }
+    table.book td[data-label]::before{ content:attr(data-label); flex:0 0 72px; color:var(--text-dim); font-family:'IBM Plex Sans', sans-serif; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
+    table.book td.company-cell{ display:block; padding-bottom:7px; font-size:16px; }
+    table.book td.company-cell::before{ content:'Company'; display:block; margin-bottom:3px; }
+    table.book td[colspan]{ display:block; }
   }
 </style>
 </head>
@@ -712,10 +722,10 @@ function renderBook(){
   }
   body.innerHTML = rows.map(({company, p}) => `
     <tr>
-      <td class="company-cell">${escapeHtml(company)}</td>
-      <td>${escapeHtml(p.name)}</td>
-      <td class="mono"><a href="tel:${escapeHtml(p.phone)}">${escapeHtml(p.phone)}</a>${contactActions(p, company)}</td>
-      <td class="mono">${escapeHtml(p.email)}</td>
+      <td class="company-cell" data-label="Company">${escapeHtml(company)}</td>
+      <td data-label="Name">${escapeHtml(p.name)}</td>
+      <td class="mono" data-label="Phone"><a href="tel:${escapeHtml(p.phone)}">${escapeHtml(p.phone)}</a>${contactActions(p, company)}</td>
+      <td class="mono" data-label="Email">${escapeHtml(p.email)}</td>
     </tr>
   `).join('');
 }
