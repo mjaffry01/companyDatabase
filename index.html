@@ -208,7 +208,8 @@
     table.book tbody, table.book tr{ display:block; }
     table.book tr{ padding:12px 0; border-bottom:1px solid #E4DAC2; }
     table.book tr:last-child{ border-bottom:none; }
-    table.book td{ display:flex; align-items:flex-start; gap:10px; padding:5px 0; border:none; overflow-wrap:anywhere; word-break:break-word; }
+    table.book td{ display:flex; flex-wrap:wrap; align-items:flex-start; gap:10px; padding:5px 0; border:none; overflow-wrap:anywhere; word-break:break-word; }
+    table.book td a[href^="tel:"]{ white-space:nowrap; }
     table.book td .contact-actions{ flex:0 0 100%; }
     table.book td[data-label]::before{ content:attr(data-label); flex:0 0 72px; color:var(--text-dim); font-family:'IBM Plex Sans', sans-serif; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
     table.book td.company-cell{ display:block; padding-bottom:7px; font-size:16px; }
@@ -447,7 +448,9 @@ function switchTab(tab){
 function contactsFor(name){ return ledger[name] || []; }
 
 function phoneDigits(phone){
-  return String(phone || '').replace(/[^\d]/g, '').replace(/^00/, '');
+  let digits = String(phone || '').replace(/[^\d]/g, '').replace(/^00/, '');
+  if(/^[6-9]\d{9}$/.test(digits)) digits = '91' + digits;
+  return digits;
 }
 function linkedInSearchUrl(name, company){
   return 'https://www.linkedin.com/search/results/people/?keywords=' + encodeURIComponent(`${name} ${company}`);
