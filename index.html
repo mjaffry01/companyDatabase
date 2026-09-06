@@ -180,7 +180,9 @@
   ::-webkit-scrollbar-thumb{ background: var(--paper-line); border-radius: 4px; }
 
   @media (max-width: 560px){
+    html,body{ max-width:100%; overflow-x:hidden; }
     body{ padding:20px 10px 40px; }
+    .wrap,.ledger,#mainPane,.results,.company-row,.company-head,.company-info,.ledger-footer{ min-width:0; max-width:100%; }
     .masthead h1{ font-size: 30px; }
     .masthead p{ font-size:14px; }
     .company-head{ flex-direction:column; }
@@ -192,6 +194,8 @@
     .refresh-btn{ font-size:0; padding-left:14px; padding-right:14px; }
     .refresh-btn::before{ content:none; }
     .refresh-btn i{ font-size:18px; }
+    .tabs{ min-width:0; overflow:hidden; }
+    .tab-btn{ min-width:0; }
     .search-bar{ padding:20px 18px 16px; }
     .search-input-row input{ font-size:19px; }
     .company-row{ padding:18px; }
@@ -199,12 +203,13 @@
     .company-actions .btn{ min-height:40px; }
     .contact-actions a{ width:42px; height:42px; font-size:21px; }
     .ledger-footer{ overflow-x:visible; padding-left:18px; padding-right:18px; }
-    table.book{ min-width:0; display:block; }
+    table.book{ width:100%; min-width:0; max-width:100%; display:block; table-layout:fixed; }
     table.book thead{ display:none; }
     table.book tbody, table.book tr{ display:block; }
     table.book tr{ padding:12px 0; border-bottom:1px solid #E4DAC2; }
     table.book tr:last-child{ border-bottom:none; }
-    table.book td{ display:flex; align-items:flex-start; gap:10px; padding:5px 0; border:none; overflow-wrap:anywhere; }
+    table.book td{ display:flex; align-items:flex-start; gap:10px; padding:5px 0; border:none; overflow-wrap:anywhere; word-break:break-word; }
+    table.book td .contact-actions{ flex:0 0 100%; }
     table.book td[data-label]::before{ content:attr(data-label); flex:0 0 72px; color:var(--text-dim); font-family:'IBM Plex Sans', sans-serif; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
     table.book td.company-cell{ display:block; padding-bottom:7px; font-size:16px; }
     table.book td.company-cell::before{ content:'Company'; display:block; margin-bottom:3px; }
