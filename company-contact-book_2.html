@@ -1,0 +1,610 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Company Contact Book</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#14181C;
+    --ink-soft:#1E252B;
+    --paper:#F4EEE1;
+    --paper-dim:#EAE2D0;
+    --paper-line:#D9CFB5;
+    --text:#211C13;
+    --text-dim:#6B6252;
+    --teal:#3E7C74;
+    --teal-dark:#2C5B54;
+    --brass:#A9834B;
+    --danger:#A5453B;
+    --paper-shadow: 0 30px 60px -25px rgba(0,0,0,.55);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background: radial-gradient(ellipse 1200px 700px at 50% -10%, #232B31 0%, var(--ink) 55%);
+    color:var(--text);
+    font-family:'IBM Plex Sans', sans-serif;
+    min-height:100vh;
+    padding: 48px 20px 80px;
+  }
+  .wrap{ max-width: 860px; margin: 0 auto; }
+  .masthead{ text-align:center; margin-bottom: 34px; }
+  .masthead .kicker{ color:#8A93A0; font-size:13px; letter-spacing:.02em; margin-bottom:10px; }
+  .masthead .kicker b{ color:#C9A467; font-weight:600; }
+  .masthead .kicker button{
+    background:none;border:none;color:#7FA79E;text-decoration:underline;cursor:pointer;font-size:12.5px;margin-left:10px;
+  }
+  .masthead h1{
+    font-family:'Fraunces', serif; font-optical-sizing: auto; font-weight:600;
+    font-size: 42px; line-height:1.1; color:#F4EEE1; margin: 0 0 10px;
+  }
+  .masthead p{ color:#9BA3AC; font-size:15px; max-width:520px; margin: 0 auto; line-height:1.5; }
+
+  .ledger{ background: var(--paper); border-radius: 14px; box-shadow: var(--paper-shadow); border: 1px solid #00000022; overflow:hidden; }
+
+  .setup{ padding: 32px 30px 34px; }
+  .setup h2{ font-family:'Fraunces', serif; font-size:20px; margin:0 0 8px; }
+  .setup p{ font-size:13.5px; color:var(--text-dim); line-height:1.6; margin: 0 0 16px; }
+  .setup ol{ font-size:13.5px; color:var(--text-dim); line-height:1.8; padding-left:20px; margin: 0 0 18px; }
+  .setup code{ background:var(--paper-dim); padding:1px 6px; border-radius:4px; font-family:'IBM Plex Mono', monospace; font-size:12.5px; }
+  .setup .url-row{ display:flex; gap:10px; margin-bottom: 10px; }
+  .setup input[type="text"]{
+    flex:1; padding: 11px 12px; border: 1px solid var(--paper-line); border-radius: 7px;
+    font-family:'IBM Plex Mono', monospace; font-size:13px; outline:none; background:#fff;
+  }
+  .setup input[type="text"]:focus{ border-color: var(--teal); }
+  .status-msg{ font-size: 13px; margin-top: 6px; }
+  .status-msg.error{ color: var(--danger); }
+  .status-msg.pending{ color: var(--text-dim); }
+  .status-msg.ok{ color: var(--teal-dark); }
+
+  .tabs{ display:flex; border-bottom: 1px solid var(--paper-line); }
+  .tab-btn{
+    flex:1; padding: 16px 10px; text-align:center; font-family:'Fraunces', serif; font-size:16px; font-weight:600;
+    background:none; border:none; cursor:pointer; color: var(--text-dim); border-bottom: 3px solid transparent;
+  }
+  .tab-btn.active{ color: var(--text); border-bottom-color: var(--teal); }
+  .tab-btn:hover{ background: var(--paper-dim); }
+
+  .search-bar{ padding: 22px 26px 18px; border-bottom: 1px solid var(--paper-line); }
+  .search-bar label{ display:block; font-size:12px; color:var(--text-dim); margin-bottom:8px; }
+  .search-input-row{ display:flex; gap:10px; }
+  .search-input-row input{
+    flex:1; font-family:'Fraunces', serif; font-size:20px; padding: 10px 4px; border:none;
+    border-bottom: 2px solid var(--paper-line); background:transparent; color:var(--text); outline:none;
+  }
+  .search-input-row input:focus{ border-bottom-color: var(--teal); }
+  .search-meta{ margin-top:10px; font-size:12.5px; color:var(--text-dim); }
+
+  .results{ max-height: 460px; overflow-y:auto; }
+  .empty-state{ padding: 44px 26px 50px; text-align:center; color:var(--text-dim); }
+  .empty-state .glyph{ font-family:'Fraunces', serif; font-size:34px; color: var(--paper-line); margin-bottom: 10px; }
+  .empty-state p{ margin:4px 0; font-size:14px; line-height:1.6;}
+
+  .company-row{ border-bottom: 1px solid var(--paper-line); padding: 16px 26px; }
+  .company-row:last-child{ border-bottom:none; }
+  .company-head{ display:flex; align-items:flex-start; justify-content:space-between; gap: 16px; cursor:pointer; }
+  .company-info h3{ font-family:'Fraunces', serif; font-weight:600; font-size: 18px; margin: 0 0 4px; color: var(--text); }
+  .company-tags{ font-size:12px; color: var(--brass); margin-bottom: 4px; font-weight:500; }
+  .company-address{ font-size:12.5px; color: var(--text-dim); line-height:1.4; }
+  .company-actions{ display:flex; align-items:center; gap:10px; flex-shrink:0; }
+  .contact-count{
+    font-family:'IBM Plex Mono', monospace; font-size:12px; color: var(--text-dim);
+    background: var(--paper-dim); padding: 3px 9px; border-radius: 20px; white-space:nowrap;
+  }
+  .btn{
+    font-family:'IBM Plex Sans', sans-serif; font-size:13px; font-weight:500; padding: 8px 14px;
+    border-radius:7px; border:1px solid transparent; cursor:pointer; transition: background .15s ease, transform .05s ease;
+  }
+  .btn:disabled{ opacity:.5; cursor:default; }
+  .btn:active{ transform: scale(0.97); }
+  .btn-primary{ background: var(--teal); color:#fff; }
+  .btn-primary:hover{ background: var(--teal-dark); }
+  .btn-ghost{ background: transparent; border-color: var(--paper-line); color: var(--text); }
+  .btn-ghost:hover{ background: var(--paper-dim); }
+
+  .panel{ margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--paper-line); }
+
+  .existing-contacts{ display:flex; flex-direction:column; gap:8px; margin-bottom: 14px; }
+  .contact-chip, .person-card{ display:flex; justify-content:space-between; align-items:center; background: var(--paper-dim); border-radius:8px; padding: 8px 12px; font-size:13px; }
+  .contact-chip .who, .person-card .who{ font-weight:600; }
+  .contact-chip .meta, .person-card .meta{ color:var(--text-dim); font-family:'IBM Plex Mono', monospace; font-size:12px; }
+  .person-card{ background:#fff; border:1px solid var(--paper-line); }
+  .person-card a{ color: var(--teal-dark); text-decoration:none; }
+  .person-card a:hover{ text-decoration:underline; }
+  .no-people{ font-size:13px; color:var(--text-dim); font-style:italic; }
+
+  .add-form{ background:#fff; border: 1px solid var(--paper-line); border-radius: 10px; padding: 16px; }
+  .add-form .field{ margin-bottom: 12px; }
+  .add-form label{ display:block; font-size:11.5px; color: var(--text-dim); margin-bottom: 4px; }
+  .add-form input[type="text"], .add-form input[type="tel"], .add-form input[type="email"]{
+    width:100%; padding: 9px 10px; border: 1px solid var(--paper-line); border-radius: 6px;
+    font-size:14px; font-family:'IBM Plex Sans', sans-serif; outline:none; background: #fff;
+  }
+  .add-form input:focus{ border-color: var(--teal); }
+  .field-row{ display:flex; gap:10px; }
+  .field-row .field{ flex:1; }
+
+  .declaration{
+    background: #FBF7ED; border: 1px solid #E7D9B8; border-radius: 8px; padding: 12px 14px;
+    font-family:'Fraunces', serif; font-size: 14.5px; line-height:1.55; color: #4A3B1F; margin-bottom: 12px;
+  }
+  .declaration em{ font-style: normal; font-weight:600; border-bottom: 1px solid #C9A467; }
+
+  .confirm-row{ display:flex; align-items:flex-start; gap:8px; margin-bottom:14px; font-size:13px; color: var(--text-dim); }
+  .confirm-row input{ margin-top:3px; }
+
+  .form-actions{ display:flex; gap:10px; justify-content:flex-end; align-items:center; }
+  .form-note{ font-size:12px; color:var(--text-dim); margin-right:auto; }
+
+  .add-custom{ padding: 20px 26px 26px; }
+
+  .ledger-footer{ padding: 18px 26px 24px; border-top: 1px solid var(--paper-line); background: var(--paper-dim); }
+  .ledger-footer-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px; }
+  .ledger-footer-head h2{ font-family:'Fraunces', serif; font-size: 17px; margin:0; font-weight:600; }
+  .ledger-footer-head span{ font-size:12px; color:var(--text-dim); }
+
+  table.book{ width:100%; border-collapse: collapse; font-size: 13px; }
+  table.book th{ text-align:left; font-weight:500; font-size:11px; color: var(--text-dim); padding: 6px 8px; border-bottom: 1px solid var(--paper-line); }
+  table.book td{ padding: 8px 8px; border-bottom: 1px solid #E4DAC2; vertical-align: top; }
+  table.book td.company-cell{ font-weight:600; }
+  table.book td.mono{ font-family:'IBM Plex Mono', monospace; font-size:12px; }
+  table.book tr:last-child td{ border-bottom:none; }
+  .book-empty{ color:var(--text-dim); font-size:13px; padding: 10px 8px; }
+
+  .toast{
+    position:fixed; bottom: 28px; left:50%; transform: translateX(-50%); background: var(--ink-soft); color:#F4EEE1;
+    padding: 10px 18px; border-radius: 8px; font-size: 13px; box-shadow: 0 10px 30px rgba(0,0,0,.4);
+    opacity:0; pointer-events:none; transition: opacity .25s ease, transform .25s ease; max-width: 80vw; text-align:center;
+  }
+  .toast.show{ opacity:1; transform: translateX(-50%) translateY(-4px); }
+
+  ::-webkit-scrollbar{ width:8px; }
+  ::-webkit-scrollbar-thumb{ background: var(--paper-line); border-radius: 4px; }
+
+  @media (max-width: 560px){
+    .masthead h1{ font-size: 30px; }
+    .company-head{ flex-direction:column; }
+    .company-actions{ width:100%; justify-content:flex-start; }
+    .field-row{ flex-direction:column; }
+    .ledger-footer-head{ flex-direction:column; align-items:flex-start; gap:4px; }
+    .setup .url-row{ flex-direction:column; }
+    .tab-btn{ font-size:14px; padding:14px 6px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="masthead">
+    <div class="kicker" id="kickerLine">Connecting to your Google Sheet…</div>
+    <h1>Company Contact Book</h1>
+    <p>One place to add and look up who you know at each company — reading live from "Company Directory" and writing to "ShiaContacts."</p>
+  </div>
+
+  <div class="ledger" id="ledgerRoot">
+    <div class="setup" id="setupPane">
+      <h2>Connect your Google Sheet</h2>
+      <p>This page talks to your spreadsheet through a small Apps Script bridge. One-time setup:</p>
+      <ol>
+        <li>Open your <b>Jobfinder</b> spreadsheet → <b>Extensions → Apps Script</b>.</li>
+        <li>Paste in the <code>Code.gs</code> script, save.</li>
+        <li>Click <b>Deploy → New deployment</b> → type <b>Web app</b>. Set <b>Execute as: Me</b>, <b>Who has access: Anyone</b>.</li>
+        <li>Copy the Web app URL (ends in <code>/exec</code>) and paste it below.</li>
+      </ol>
+      <div class="url-row">
+        <input type="text" id="urlInput" placeholder="https://script.google.com/macros/s/…/exec" value="https://script.google.com/macros/s/AKfycbxQswsvwOSRrTLC3m_evsfbmrb-nVrncYZtlsmzB0X5mdlqk45sYtcUl1ofGRWg_tzj/exec">
+        <button class="btn btn-primary" id="connectBtn" onclick="connect()">Connect</button>
+      </div>
+      <div class="status-msg" id="setupStatus"></div>
+    </div>
+
+    <div id="mainPane" style="display:none;">
+      <div class="tabs">
+        <button class="tab-btn active" id="tabAddBtn" onclick="switchTab('add')">Add a contact</button>
+        <button class="tab-btn" id="tabLookupBtn" onclick="switchTab('lookup')">Search &amp; lookup</button>
+      </div>
+
+      <div id="addView">
+        <div class="search-bar">
+          <label for="searchInputAdd">Search by company name</label>
+          <div class="search-input-row">
+            <input type="text" id="searchInputAdd" placeholder="e.g. Deloitte, Cognizant, Darwinbox…" autocomplete="off">
+          </div>
+          <div class="search-meta" id="searchMetaAdd"></div>
+        </div>
+        <div class="results" id="resultsAdd"></div>
+        <div class="ledger-footer">
+          <div class="ledger-footer-head">
+            <h2>Your ShiaContacts sheet</h2>
+            <span id="totalContactsLabel">0 people saved</span>
+          </div>
+          <table class="book">
+            <thead><tr><th>Company</th><th>Contact name</th><th>Phone</th><th>Email</th></tr></thead>
+            <tbody id="bookBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="lookupView" style="display:none;">
+        <div class="search-bar">
+          <label for="searchInputLookup">Search by company name</label>
+          <div class="search-input-row">
+            <input type="text" id="searchInputLookup" placeholder="e.g. Deloitte, Cognizant, Darwinbox…" autocomplete="off">
+          </div>
+          <div class="search-meta" id="searchMetaLookup"></div>
+        </div>
+        <div class="results" id="resultsLookup"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const URL_STORAGE_KEY = "sheet-api-url-v1";
+let apiUrl = null;
+let companies = [];
+let ledger = {};
+let openCompany = null;
+let saving = false;
+let currentTab = 'add';
+
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
+}
+function attrJson(value){
+  return JSON.stringify(value).replace(/"/g, '&quot;');
+}
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(showToast._timer);
+  showToast._timer = setTimeout(()=> t.classList.remove('show'), 2600);
+}
+
+async function init(){
+  let stored = null;
+  try{
+    const res = await window.storage.get(URL_STORAGE_KEY, false);
+    stored = res && res.value ? res.value : null;
+  }catch(e){ stored = null; }
+  if(stored){ document.getElementById('urlInput').value = stored; }
+  await connect(document.getElementById('urlInput').value, true);
+}
+
+async function connect(prefillUrl, silent){
+  const url = (prefillUrl || document.getElementById('urlInput').value || '').trim();
+  const statusEl = document.getElementById('setupStatus');
+  const btn = document.getElementById('connectBtn');
+
+  if(!url){
+    statusEl.textContent = 'Paste your Apps Script Web app URL first.';
+    statusEl.className = 'status-msg error';
+    return;
+  }
+  statusEl.textContent = 'Connecting…';
+  statusEl.className = 'status-msg pending';
+  if(btn) btn.disabled = true;
+
+  try{
+    const compRes = await fetch(url + '?action=companies');
+    const compJson = await compRes.json();
+    if(compJson.error) throw new Error(compJson.error);
+    companies = compJson.companies || [];
+
+    const contRes = await fetch(url + '?action=contacts');
+    const contJson = await contRes.json();
+    if(contJson.error) throw new Error(contJson.error);
+    ledger = contJson.contacts || {};
+
+    apiUrl = url;
+    try{ await window.storage.set(URL_STORAGE_KEY, url, false); }catch(e){}
+
+    document.getElementById('setupPane').style.display = 'none';
+    document.getElementById('mainPane').style.display = 'block';
+    updateKicker();
+    renderAll();
+    if(!silent) showToast('Connected to your Google Sheet');
+  }catch(err){
+    statusEl.textContent = 'Could not connect: ' + err.message + '. Check the URL and that access is set to "Anyone".';
+    statusEl.className = 'status-msg error';
+    document.getElementById('kickerLine').textContent = 'Not connected yet — see setup below';
+  }finally{
+    if(btn) btn.disabled = false;
+  }
+}
+
+function updateKicker(){
+  const totalPeople = Object.values(ledger).reduce((s,a)=>s+a.length,0);
+  document.getElementById('kickerLine').innerHTML =
+    `Connected · <b>${companies.length} companies</b> · <b>${totalPeople} contacts</b> · <button onclick="disconnect()">change connection</button>`;
+}
+
+function disconnect(){
+  document.getElementById('setupPane').style.display = 'block';
+  document.getElementById('mainPane').style.display = 'none';
+  document.getElementById('setupStatus').textContent = '';
+  document.getElementById('setupStatus').className = 'status-msg';
+}
+
+function switchTab(tab){
+  currentTab = tab;
+  document.getElementById('tabAddBtn').classList.toggle('active', tab === 'add');
+  document.getElementById('tabLookupBtn').classList.toggle('active', tab === 'lookup');
+  document.getElementById('addView').style.display = tab === 'add' ? 'block' : 'none';
+  document.getElementById('lookupView').style.display = tab === 'lookup' ? 'block' : 'none';
+  if(tab === 'lookup') renderLookup();
+}
+
+function contactsFor(name){ return ledger[name] || []; }
+
+function matchCompanies(query){
+  const q = query.trim().toLowerCase();
+  if(!q) return [];
+  return companies.filter(c => c.n.toLowerCase().includes(q));
+}
+
+function renderAll(){ renderAdd(); renderBook(); }
+
+/* ---------- ADD TAB ---------- */
+
+function renderAdd(){
+  const query = document.getElementById('searchInputAdd').value;
+  const resultsEl = document.getElementById('resultsAdd');
+  const metaEl = document.getElementById('searchMetaAdd');
+  const q = query.trim();
+
+  if(!q){
+    resultsEl.innerHTML = `
+      <div class="empty-state">
+        <div class="glyph">+</div>
+        <p>Start typing a company name above.</p>
+        <p>Contacts already in ShiaContacts appear in the ledger below regardless of search.</p>
+      </div>`;
+    metaEl.textContent = '';
+    return;
+  }
+
+  const matches = matchCompanies(q);
+  const LIMIT = 30;
+  const shown = matches.slice(0, LIMIT);
+
+  metaEl.textContent = matches.length
+    ? `${matches.length} match${matches.length===1?'':'es'}${matches.length > LIMIT ? ' — showing first ' + LIMIT + ', refine your search' : ''}`
+    : "No company in your directory matches — you can still add one below.";
+
+  if(matches.length === 0){
+    resultsEl.innerHTML = `
+      <div class="add-custom">
+        <div style="font-size:13px;color:var(--text-dim);margin-bottom:10px;">
+          "${escapeHtml(q)}" isn't in your Company Directory tab. You can still log a contact under that name.
+        </div>
+        <button class="btn btn-primary" onclick="openFormFor(${attrJson(q)})">Add contact for "${escapeHtml(q)}"</button>
+        ${openCompany === q ? renderPanel(q) : ''}
+      </div>`;
+    return;
+  }
+  resultsEl.innerHTML = shown.map(c => renderCompanyRow(c)).join('');
+}
+
+function renderCompanyRow(c){
+  const contacts = contactsFor(c.n);
+  const isOpen = openCompany === c.n;
+  return `
+    <div class="company-row">
+      <div class="company-head" onclick="toggleCompany(${attrJson(c.n)})">
+        <div class="company-info">
+          <h3>${escapeHtml(c.n)}</h3>
+          <div class="company-tags">${escapeHtml(c.s)} · ${escapeHtml(c.t)}</div>
+          <div class="company-address">${escapeHtml(c.a)}</div>
+        </div>
+        <div class="company-actions">
+          <span class="contact-count">${contacts.length} saved</span>
+          <button class="btn btn-primary" onclick="event.stopPropagation(); openFormFor(${attrJson(c.n)})">Add</button>
+        </div>
+      </div>
+      ${isOpen ? renderPanel(c.n) : ''}
+    </div>`;
+}
+
+function renderPanel(companyName){
+  const contacts = contactsFor(companyName);
+  return `
+    <div class="panel">
+      ${contacts.length ? `<div class="existing-contacts">
+        ${contacts.map(p => `
+          <div class="contact-chip">
+            <div>
+              <div class="who">${escapeHtml(p.name)}</div>
+              <div class="meta">${escapeHtml(p.phone)} · ${escapeHtml(p.email)}</div>
+            </div>
+          </div>
+        `).join('')}
+      </div>` : ''}
+      ${renderAddForm(companyName)}
+    </div>`;
+}
+
+function renderAddForm(companyName){
+  return `
+    <div class="add-form">
+      <div class="field-row">
+        <div class="field">
+          <label>Your name</label>
+          <input type="text" id="f-name" placeholder="Full name" oninput="updateDeclaration(${attrJson(companyName)})">
+        </div>
+        <div class="field">
+          <label>Phone number</label>
+          <input type="tel" id="f-phone" placeholder="+91 …">
+        </div>
+      </div>
+      <div class="field">
+        <label>Email address</label>
+        <input type="email" id="f-email" placeholder="name@example.com">
+      </div>
+      <div class="declaration" id="declarationText">
+        I declare that my name is <em>______</em> and I am currently working at <em>${escapeHtml(companyName)}</em>.
+      </div>
+      <label class="confirm-row">
+        <input type="checkbox" id="f-confirm">
+        <span>I confirm the above declaration is accurate and I'm giving this contact information myself.</span>
+      </label>
+      <div class="form-actions">
+        <span class="form-note" id="formNote"></span>
+        <button class="btn btn-ghost" onclick="closePanel()">Cancel</button>
+        <button class="btn btn-primary" id="saveBtn" onclick="submitContact(${attrJson(companyName)})">Save to sheet</button>
+      </div>
+    </div>`;
+}
+
+function updateDeclaration(companyName){
+  const name = document.getElementById('f-name').value.trim();
+  const el = document.getElementById('declarationText');
+  el.innerHTML = `I declare that my name is <em>${name ? escapeHtml(name) : '______'}</em> and I am currently working at <em>${escapeHtml(companyName)}</em>.`;
+}
+
+function toggleCompany(name){
+  openCompany = (openCompany === name) ? null : name;
+  renderAdd();
+}
+function openFormFor(name){
+  openCompany = name;
+  renderAdd();
+  setTimeout(()=> { const el = document.getElementById('f-name'); if(el) el.focus(); }, 30);
+}
+function closePanel(){ openCompany = null; renderAdd(); }
+
+async function submitContact(companyName){
+  if(saving) return;
+  const name = document.getElementById('f-name').value.trim();
+  const phone = document.getElementById('f-phone').value.trim();
+  const email = document.getElementById('f-email').value.trim();
+  const confirmed = document.getElementById('f-confirm').checked;
+
+  if(!name || !phone || !email){ showToast('Fill in name, phone, and email'); return; }
+  if(!confirmed){ showToast('Please confirm the declaration first'); return; }
+
+  saving = true;
+  const saveBtn = document.getElementById('saveBtn');
+  const note = document.getElementById('formNote');
+  if(saveBtn) saveBtn.disabled = true;
+  if(note) note.textContent = 'Writing to your sheet…';
+
+  try{
+    const res = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ company: companyName, name, phone, email })
+    });
+    const json = await res.json();
+    if(json.error) throw new Error(json.error);
+
+    if(!ledger[companyName]) ledger[companyName] = [];
+    ledger[companyName].push({ name, phone, email, ts: Date.now() });
+
+    openCompany = null;
+    saving = false;
+    updateKicker();
+    renderAll();
+    showToast(`Saved ${name} to ShiaContacts under ${companyName}`);
+  }catch(err){
+    saving = false;
+    if(saveBtn) saveBtn.disabled = false;
+    if(note) note.textContent = '';
+    showToast('Could not save: ' + err.message);
+  }
+}
+
+function renderBook(){
+  const body = document.getElementById('bookBody');
+  const rows = [];
+  Object.keys(ledger).sort((a,b) => a.localeCompare(b)).forEach(company => {
+    ledger[company].forEach(p => rows.push({ company, p }));
+  });
+
+  document.getElementById('totalContactsLabel').textContent =
+    `${rows.length} ${rows.length === 1 ? 'person' : 'people'} saved across ${Object.keys(ledger).length} ${Object.keys(ledger).length === 1 ? 'company' : 'companies'}`;
+
+  if(rows.length === 0){
+    body.innerHTML = `<tr><td colspan="4" class="book-empty">No contacts saved yet — search a company above and hit Add.</td></tr>`;
+    return;
+  }
+  body.innerHTML = rows.map(({company, p}) => `
+    <tr>
+      <td class="company-cell">${escapeHtml(company)}</td>
+      <td>${escapeHtml(p.name)}</td>
+      <td class="mono">${escapeHtml(p.phone)}</td>
+      <td class="mono">${escapeHtml(p.email)}</td>
+    </tr>
+  `).join('');
+}
+
+/* ---------- LOOKUP TAB ---------- */
+
+function renderLookup(){
+  const query = document.getElementById('searchInputLookup').value;
+  const resultsEl = document.getElementById('resultsLookup');
+  const metaEl = document.getElementById('searchMetaLookup');
+  const q = query.trim();
+
+  if(!q){
+    resultsEl.innerHTML = `
+      <div class="empty-state">
+        <div class="glyph">?</div>
+        <p>Start typing a company name above.</p>
+        <p>You'll see everyone already logged for that company.</p>
+      </div>`;
+    metaEl.textContent = '';
+    return;
+  }
+
+  const matches = matchCompanies(q);
+  const LIMIT = 25;
+  const shown = matches.slice(0, LIMIT);
+
+  metaEl.textContent = matches.length
+    ? `${matches.length} match${matches.length===1?'':'es'}${matches.length > LIMIT ? ' — showing first ' + LIMIT + ', refine your search' : ''}`
+    : "No company in your directory matches that search.";
+
+  resultsEl.innerHTML = shown.map(c => renderLookupBlock(c)).join('');
+}
+
+function renderLookupBlock(c){
+  const people = contactsFor(c.n);
+  return `
+    <div class="company-row">
+      <div class="company-info">
+        <h3>${escapeHtml(c.n)}</h3>
+        <div class="company-tags">${escapeHtml(c.s)} · ${escapeHtml(c.t)}</div>
+        <div class="company-address">${escapeHtml(c.a)}</div>
+      </div>
+      <div class="panel" style="border-top:none; margin-top:12px; padding-top:0;">
+        ${people.length ? `
+          <div class="existing-contacts">
+            ${people.map(p => `
+              <div class="person-card">
+                <div>
+                  <div class="who">${escapeHtml(p.name)}</div>
+                  <div class="meta">${escapeHtml(p.phone)} · <a href="mailto:${escapeHtml(p.email)}">${escapeHtml(p.email)}</a></div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        ` : `<div class="no-people">No contacts logged for this company yet.</div>`}
+      </div>
+    </div>`;
+}
+
+document.getElementById('searchInputAdd').addEventListener('input', renderAdd);
+document.getElementById('searchInputLookup').addEventListener('input', renderLookup);
+init();
+</script>
+</body>
+</html>
