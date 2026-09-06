@@ -680,6 +680,14 @@ async function submitContact(companyName){
   if(!name || !phone || !email){ showToast('Fill in name, phone, and email'); return; }
   if(!confirmed){ showToast('Please confirm the declaration first'); return; }
 
+  const duplicateName = contactsFor(companyName).some(p =>
+    String(p.name || '').trim().toLowerCase() === name.toLowerCase()
+  );
+  if(duplicateName){
+    showToast(`${name} is already saved for ${companyName}`);
+    return;
+  }
+
   saving = true;
   const saveBtn = document.getElementById('saveBtn');
   const note = document.getElementById('formNote');
