@@ -113,6 +113,9 @@
   .contact-chip, .person-card{ display:flex; justify-content:space-between; align-items:center; background: var(--paper-dim); border-radius:8px; padding: 8px 12px; font-size:13px; }
   .contact-chip .who, .person-card .who{ font-weight:600; }
   .contact-chip .meta, .person-card .meta{ color:var(--text-dim); font-family:'IBM Plex Mono', monospace; font-size:12px; }
+  .contact-actions{ display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; font-family:'IBM Plex Sans', sans-serif; font-size:12px; }
+  .contact-actions a{ color:var(--teal-dark); text-decoration:none; }
+  .contact-actions a:hover{ text-decoration:underline; }
   .person-card{ background:#fff; border:1px solid var(--paper-line); }
   .person-card a{ color: var(--teal-dark); text-decoration:none; }
   .person-card a:hover{ text-decoration:underline; }
@@ -142,6 +145,8 @@
   .form-note{ font-size:12px; color:var(--text-dim); margin-right:auto; }
 
   .add-custom{ padding: 20px 26px 26px; }
+  .organization-form{ margin-top:14px; }
+  .organization-form h3{ font-family:'Fraunces', serif; font-size:17px; margin:0 0 12px; }
 
   .ledger-footer{ padding: 18px 26px 24px; border-top: 1px solid var(--paper-line); background: var(--paper-dim); }
   .ledger-footer-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px; }
@@ -181,13 +186,13 @@
 
 <div class="wrap">
   <div class="masthead">
-    <div class="kicker" id="kickerLine">Connecting to your Google Sheet…</div>
+    <div class="kicker" id="kickerLine">Loading your contact book…</div>
     <h1>Company Contact Book</h1>
-    <p>One place to add and look up who you know at each company — reading live from "Company Directory" and writing to "ShiaContacts."</p>
+    <p>Help each other search for opportunities and find jobs by sharing useful company contacts.</p>
   </div>
 
   <div class="ledger" id="ledgerRoot">
-    <div class="setup" id="setupPane">
+    <div class="setup" id="setupPane" style="display:none;">
       <h2>Connect your Google Sheet</h2>
       <p>This page talks to your spreadsheet through a small Apps Script bridge. One-time setup:</p>
       <ol>
@@ -203,24 +208,25 @@
       <div class="status-msg" id="setupStatus"></div>
     </div>
 
-    <div id="mainPane" style="display:none;">
+    <div id="mainPane">
       <div class="tabs">
         <button class="tab-btn active" id="tabAddBtn" onclick="switchTab('add')">Add a contact</button>
         <button class="tab-btn" id="tabLookupBtn" onclick="switchTab('lookup')">Search &amp; lookup</button>
+        <button class="tab-btn refresh-btn" onclick="refreshContacts()" title="Reload contacts from Google Sheets">↻ Refresh</button>
       </div>
 
       <div id="addView">
         <div class="search-bar">
-          <label for="searchInputAdd">Search by company name</label>
+            <label for="searchInputAdd">Search for your company. If you don't find it, you can add it.</label>
           <div class="search-input-row">
-            <input type="text" id="searchInputAdd" placeholder="e.g. Deloitte, Cognizant, Darwinbox…" autocomplete="off">
+            <input type="text" id="searchInputAdd" placeholder="Search your company name…" autocomplete="off">
           </div>
           <div class="search-meta" id="searchMetaAdd"></div>
         </div>
         <div class="results" id="resultsAdd"></div>
         <div class="ledger-footer">
           <div class="ledger-footer-head">
-            <h2>Your ShiaContacts sheet</h2>
+            <h2>Your contacts sheet</h2>
             <span id="totalContactsLabel">0 people saved</span>
           </div>
           <table class="book">
@@ -254,6 +260,7 @@ let ledger = {};
 let openCompany = null;
 let saving = false;
 let currentTab = 'add';
+let organizationFormOpen = false;
 
 function escapeHtml(str){
   return String(str).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
@@ -294,15 +301,16 @@ async function connect(prefillUrl, silent){
   if(btn) btn.disabled = true;
 
   try{
-    const compRes = await fetch(url + '?action=companies');
+    const cacheBust = () => `_=${Date.now()}`;
+    const compRes = await fetch(url + '?action=companies&' + cacheBust(), { cache: 'no-store' });
     const compJson = await compRes.json();
     if(compJson.error) throw new Error(compJson.error);
     companies = compJson.companies || [];
 
-    const contRes = await fetch(url + '?action=contacts');
+    const contRes = await fetch(url + '?action=contacts&' + cacheBust(), { cache: 'no-store' });
     const contJson = await contRes.json();
     if(contJson.error) throw new Error(contJson.error);
-    ledger = contJson.contacts || {};
+    ledger = normalizeContacts(contJson.contacts || contJson.data || []);
 
     apiUrl = url;
     try{ await window.storage.set(URL_STORAGE_KEY, url, false); }catch(e){}
@@ -315,9 +323,55 @@ async function connect(prefillUrl, silent){
   }catch(err){
     statusEl.textContent = 'Could not connect: ' + err.message + '. Check the URL and that access is set to "Anyone".';
     statusEl.className = 'status-msg error';
+    document.getElementById('setupPane').style.display = 'block';
+    document.getElementById('mainPane').style.display = 'none';
     document.getElementById('kickerLine').textContent = 'Not connected yet — see setup below';
   }finally{
     if(btn) btn.disabled = false;
+  }
+}
+
+function normalizeContacts(raw){
+  const result = {};
+  const add = (company, person) => {
+    if(!company) return;
+    const contact = {
+      name: String(person.name ?? person.contactName ?? person.person ?? person.fullName ?? person.n ?? '').trim(),
+      phone: String(person.phone ?? person.phoneNumber ?? person.mobile ?? person.p ?? '').trim(),
+      email: String(person.email ?? person.emailAddress ?? person.e ?? '').trim(),
+      ts: person.ts ?? person.timestamp ?? ''
+    };
+    if(!contact.name && !contact.phone && !contact.email) return;
+    if(!result[company]) result[company] = [];
+    result[company].push(contact);
+  };
+
+  if(Array.isArray(raw)){
+    raw.forEach(row => add(
+      row.company ?? row.organization ?? row.organisation ?? row.companyName,
+      row
+    ));
+  }else if(raw && typeof raw === 'object'){
+    Object.entries(raw).forEach(([company, people]) => {
+      if(Array.isArray(people)) people.forEach(person => add(company, person || {}));
+    });
+  }
+  return result;
+}
+
+async function refreshContacts(){
+  if(!apiUrl) return;
+  try{
+    const res = await fetch(apiUrl + '?action=contacts&_=' + Date.now(), { cache: 'no-store' });
+    const json = await res.json();
+    if(json.error) throw new Error(json.error);
+    ledger = normalizeContacts(json.contacts || json.data || []);
+    updateKicker();
+    renderAll();
+    if(currentTab === 'lookup') renderLookup();
+    showToast('Contacts refreshed from your Google Sheet');
+  }catch(err){
+    showToast('Could not refresh contacts: ' + err.message);
   }
 }
 
@@ -345,6 +399,23 @@ function switchTab(tab){
 
 function contactsFor(name){ return ledger[name] || []; }
 
+function phoneDigits(phone){ return String(phone || '').replace(/[^\d]/g, ''); }
+function linkedInSearchUrl(name, company){
+  return 'https://www.linkedin.com/search/results/people/?keywords=' + encodeURIComponent(`${name} ${company}`);
+}
+function contactActions(person, company){
+  const phone = String(person.phone || '').trim();
+  const digits = phoneDigits(phone);
+  const name = String(person.name || '').trim();
+  return `
+    <div class="contact-actions">
+      <a href="tel:${escapeHtml(phone)}">Call</a>
+      ${digits ? `<a href="https://wa.me/${digits}" target="_blank" rel="noopener">WhatsApp</a>` : ''}
+      ${digits ? `<a href="sms:${escapeHtml(phone)}">SMS</a>` : ''}
+      <a href="${linkedInSearchUrl(name, company)}" target="_blank" rel="noopener">LinkedIn</a>
+    </div>`;
+}
+
 function matchCompanies(query){
   const q = query.trim().toLowerCase();
   if(!q) return [];
@@ -366,7 +437,7 @@ function renderAdd(){
       <div class="empty-state">
         <div class="glyph">+</div>
         <p>Start typing a company name above.</p>
-        <p>Contacts already in ShiaContacts appear in the ledger below regardless of search.</p>
+        <p>Saved contacts appear in the ledger below regardless of search.</p>
       </div>`;
     metaEl.textContent = '';
     return;
@@ -384,14 +455,83 @@ function renderAdd(){
     resultsEl.innerHTML = `
       <div class="add-custom">
         <div style="font-size:13px;color:var(--text-dim);margin-bottom:10px;">
-          "${escapeHtml(q)}" isn't in your Company Directory tab. You can still log a contact under that name.
+          "${escapeHtml(q)}" isn't in your Company Directory tab.
         </div>
-        <button class="btn btn-primary" onclick="openFormFor(${attrJson(q)})">Add contact for "${escapeHtml(q)}"</button>
-        ${openCompany === q ? renderPanel(q) : ''}
+        ${organizationFormOpen ? renderOrganizationForm(q) : `
+          <button class="btn btn-primary" onclick="openOrganizationForm(${attrJson(q)})">Add organization</button>
+          <button class="btn btn-ghost" onclick="openFormFor(${attrJson(q)})">Add contact only</button>
+        `}
       </div>`;
     return;
   }
   resultsEl.innerHTML = shown.map(c => renderCompanyRow(c)).join('');
+}
+
+function renderOrganizationForm(suggestedName){
+  return `
+    <div class="add-form organization-form">
+      <h3>Add organization</h3>
+      <div class="field">
+        <label for="org-name">Organization name</label>
+        <input type="text" id="org-name" value="${escapeHtml(suggestedName)}" placeholder="Organization name">
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="org-sector">Sector</label>
+          <input type="text" id="org-sector" placeholder="e.g. Technology">
+        </div>
+        <div class="field">
+          <label for="org-type">Type</label>
+          <input type="text" id="org-type" placeholder="e.g. Startup">
+        </div>
+      </div>
+      <div class="field">
+        <label for="org-address">Address</label>
+        <input type="text" id="org-address" placeholder="City, country">
+      </div>
+      <div class="form-actions">
+        <button class="btn btn-ghost" onclick="cancelOrganizationForm()">Cancel</button>
+        <button class="btn btn-primary" onclick="createOrganization()">Add and continue</button>
+      </div>
+    </div>`;
+}
+
+function openOrganizationForm(suggestedName){
+  organizationFormOpen = true;
+  openCompany = null;
+  renderAdd();
+  setTimeout(()=> { const el = document.getElementById('org-name'); if(el) el.focus(); }, 30);
+}
+
+function cancelOrganizationForm(){
+  organizationFormOpen = false;
+  renderAdd();
+}
+
+function createOrganization(){
+  const name = document.getElementById('org-name').value.trim();
+  const sector = document.getElementById('org-sector').value.trim();
+  const type = document.getElementById('org-type').value.trim();
+  const address = document.getElementById('org-address').value.trim();
+
+  if(!name){ showToast('Enter an organization name'); return; }
+  if(companies.some(c => c.n.toLowerCase() === name.toLowerCase())){
+    showToast('That organization already exists');
+    organizationFormOpen = false;
+    openCompany = companies.find(c => c.n.toLowerCase() === name.toLowerCase()).n;
+    renderAdd();
+    return;
+  }
+
+  companies.push({ n: name, s: sector || 'Not specified', t: type || 'Not specified', a: address || 'Not specified' });
+  companies.sort((a,b) => a.n.localeCompare(b.n));
+  organizationFormOpen = false;
+  openCompany = name;
+  const search = document.getElementById('searchInputAdd');
+  search.value = name;
+  renderAll();
+  setTimeout(()=> { const el = document.getElementById('f-name'); if(el) el.focus(); }, 30);
+  showToast(`${name} added — now add a contact`);
 }
 
 function renderCompanyRow(c){
@@ -421,10 +561,11 @@ function renderPanel(companyName){
       ${contacts.length ? `<div class="existing-contacts">
         ${contacts.map(p => `
           <div class="contact-chip">
-            <div>
-              <div class="who">${escapeHtml(p.name)}</div>
-              <div class="meta">${escapeHtml(p.phone)} · ${escapeHtml(p.email)}</div>
-            </div>
+              <div>
+                <div class="who">${escapeHtml(p.name)}</div>
+                <div class="meta">${escapeHtml(p.phone)} · ${escapeHtml(p.email)}</div>
+                ${contactActions(p, companyName)}
+              </div>
           </div>
         `).join('')}
       </div>` : ''}
@@ -475,11 +616,12 @@ function toggleCompany(name){
   renderAdd();
 }
 function openFormFor(name){
+  organizationFormOpen = false;
   openCompany = name;
   renderAdd();
   setTimeout(()=> { const el = document.getElementById('f-name'); if(el) el.focus(); }, 30);
 }
-function closePanel(){ openCompany = null; renderAdd(); }
+function closePanel(){ organizationFormOpen = false; openCompany = null; renderAdd(); }
 
 async function submitContact(companyName){
   if(saving) return;
@@ -513,7 +655,7 @@ async function submitContact(companyName){
     saving = false;
     updateKicker();
     renderAll();
-    showToast(`Saved ${name} to ShiaContacts under ${companyName}`);
+    showToast(`Saved ${name} under ${companyName}`);
   }catch(err){
     saving = false;
     if(saveBtn) saveBtn.disabled = false;
@@ -540,7 +682,7 @@ function renderBook(){
     <tr>
       <td class="company-cell">${escapeHtml(company)}</td>
       <td>${escapeHtml(p.name)}</td>
-      <td class="mono">${escapeHtml(p.phone)}</td>
+      <td class="mono"><a href="tel:${escapeHtml(p.phone)}">${escapeHtml(p.phone)}</a>${contactActions(p, company)}</td>
       <td class="mono">${escapeHtml(p.email)}</td>
     </tr>
   `).join('');
@@ -593,6 +735,7 @@ function renderLookupBlock(c){
                 <div>
                   <div class="who">${escapeHtml(p.name)}</div>
                   <div class="meta">${escapeHtml(p.phone)} · <a href="mailto:${escapeHtml(p.email)}">${escapeHtml(p.email)}</a></div>
+                  ${contactActions(p, c.n)}
                 </div>
               </div>
             `).join('')}
