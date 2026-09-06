@@ -4,6 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Company Contact Book</title>
+<meta name="theme-color" content="#14181C">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Contact Book">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -39,6 +45,7 @@
   .masthead .kicker button{
     background:none;border:none;color:#7FA79E;text-decoration:underline;cursor:pointer;font-size:12.5px;margin-left:10px;
   }
+  .install-btn{ background:#3E7C74 !important; color:#fff !important; border:0 !important; border-radius:999px; padding:6px 11px; text-decoration:none !important; cursor:pointer; }
   .masthead h1{
     font-family:'Fraunces', serif; font-optical-sizing: auto; font-weight:600;
     font-size: clamp(32px, 5vw, 48px); line-height:1.1; color:#F4EEE1; margin: 0 0 10px;
@@ -226,7 +233,7 @@
 
 <div class="wrap">
   <div class="masthead">
-    <div class="kicker" id="kickerLine">Loading your contact book…</div>
+    <div class="kicker" id="kickerLine">Loading your contact book… <button class="install-btn" id="installBtn" onclick="installApp()" hidden><i class="fa-solid fa-download" aria-hidden="true"></i> Install</button></div>
     <h1>Company Contact Book</h1>
     <p>Help each other search for opportunities and find jobs by sharing useful company contacts.</p>
   </div>
@@ -301,6 +308,27 @@ let openCompany = null;
 let saving = false;
 let currentTab = 'add';
 let organizationFormOpen = false;
+let installPrompt = null;
+
+window.addEventListener('beforeinstallprompt', event => {
+  event.preventDefault();
+  installPrompt = event;
+  document.getElementById('installBtn').hidden = false;
+});
+window.addEventListener('appinstalled', () => {
+  installPrompt = null;
+  document.getElementById('installBtn').hidden = true;
+});
+async function installApp(){
+  if(!installPrompt){
+    showToast('On iPhone: open Share in Safari, then choose Add to Home Screen');
+    return;
+  }
+  installPrompt.prompt();
+  await installPrompt.userChoice;
+  installPrompt = null;
+  document.getElementById('installBtn').hidden = true;
+}
 
 async function readSavedUrl(){
   try{
@@ -815,6 +843,7 @@ function renderLookupBlock(c){
 
 document.getElementById('searchInputAdd').addEventListener('input', renderAdd);
 document.getElementById('searchInputLookup').addEventListener('input', renderLookup);
+if('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
 init();
 </script>
 </body>
