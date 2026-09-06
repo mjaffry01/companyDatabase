@@ -211,6 +211,10 @@
     table.book td{ display:flex; flex-wrap:wrap; align-items:flex-start; gap:10px; padding:5px 0; border:none; overflow-wrap:anywhere; word-break:break-word; }
     table.book td a[href^="tel:"]{ white-space:nowrap; }
     table.book td .contact-actions{ flex:0 0 100%; }
+    table.book td[data-label="Phone"]{ display:grid; grid-template-columns:72px minmax(0,1fr); align-items:center; column-gap:10px; }
+    table.book td[data-label="Phone"]::before{ grid-column:1; grid-row:1 / span 2; }
+    table.book td[data-label="Phone"] > a[href^="tel:"]{ grid-column:2; grid-row:1; min-width:0; flex:none; }
+    table.book td[data-label="Phone"] .contact-actions{ grid-column:2; grid-row:2; width:100%; }
     table.book td[data-label]::before{ content:attr(data-label); flex:0 0 72px; color:var(--text-dim); font-family:'IBM Plex Sans', sans-serif; font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
     table.book td.company-cell{ display:block; padding-bottom:7px; font-size:16px; }
     table.book td.company-cell::before{ content:'Company'; display:block; margin-bottom:3px; }
