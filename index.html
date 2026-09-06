@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 <style>
   :root{
     --ink:#14181C;
@@ -70,6 +71,7 @@
   .tab-btn.active{ color: var(--text); border-bottom-color: var(--teal); }
   .tab-btn:hover{ background: var(--paper-dim); }
   .refresh-btn{ flex:0 0 auto; padding-left:18px; padding-right:18px; font-family:'IBM Plex Sans', sans-serif; font-size:13px; font-weight:500; }
+  .icon-btn{ min-width:44px; min-height:44px; padding-left:10px; padding-right:10px; }
 
   .search-bar{ padding: 24px 28px 20px; border-bottom: 1px solid var(--paper-line); background:#FBF7ED; }
   .search-bar label{ display:block; font-size:12px; color:var(--text-dim); margin-bottom:8px; }
@@ -104,6 +106,7 @@
   }
   .btn:disabled{ opacity:.5; cursor:default; }
   .btn:active{ transform: scale(0.97); }
+  .btn i{ font-size:1.15em; }
   .btn-primary{ background: var(--teal); color:#fff; }
   .btn-primary:hover{ background: var(--teal-dark); }
   .btn-ghost{ background: transparent; border-color: var(--paper-line); color: var(--text); }
@@ -115,8 +118,8 @@
   .contact-chip, .person-card{ display:flex; justify-content:space-between; align-items:center; background: var(--paper-dim); border-radius:8px; padding: 8px 12px; font-size:13px; }
   .contact-chip .who, .person-card .who{ font-weight:600; }
   .contact-chip .meta, .person-card .meta{ color:var(--text-dim); font-family:'IBM Plex Mono', monospace; font-size:12px; }
-  .contact-actions{ display:flex; gap:8px; flex-wrap:wrap; margin-top:6px; font-family:'IBM Plex Sans', sans-serif; font-size:12px; }
-  .contact-actions a{ color:var(--teal-dark); text-decoration:none; }
+  .contact-actions{ display:flex; gap:10px; flex-wrap:wrap; margin-top:7px; font-family:'IBM Plex Sans', sans-serif; font-size:12px; }
+  .contact-actions a{ color:var(--teal-dark); text-decoration:none; display:inline-flex; align-items:center; justify-content:center; width:34px; height:34px; border-radius:7px; background:#F8F3E8; font-size:18px; }
   .contact-actions a:hover{ text-decoration:underline; }
   .person-card{ background:#fff; border:1px solid var(--paper-line); }
   .person-card a{ color: var(--teal-dark); text-decoration:none; }
@@ -187,13 +190,14 @@
     .setup .url-row{ flex-direction:column; }
     .tab-btn{ font-size:14px; padding:14px 6px; }
     .refresh-btn{ font-size:0; padding-left:14px; padding-right:14px; }
-    .refresh-btn::before{ content:'↻'; font-size:18px; }
+    .refresh-btn::before{ content:none; }
+    .refresh-btn i{ font-size:18px; }
     .search-bar{ padding:20px 18px 16px; }
     .search-input-row input{ font-size:19px; }
     .company-row{ padding:18px; }
     .company-actions{ gap:8px; }
     .company-actions .btn{ min-height:40px; }
-    .contact-actions a{ display:inline-block; padding:5px 2px; }
+    .contact-actions a{ width:42px; height:42px; font-size:21px; }
     .ledger-footer{ overflow-x:auto; padding-left:18px; padding-right:18px; }
   }
 </style>
@@ -219,7 +223,7 @@
       </ol>
       <div class="url-row">
         <input type="text" id="urlInput" placeholder="https://script.google.com/macros/s/…/exec" value="https://script.google.com/macros/s/AKfycbxQswsvwOSRrTLC3m_evsfbmrb-nVrncYZtlsmzB0X5mdlqk45sYtcUl1ofGRWg_tzj/exec">
-        <button class="btn btn-primary" id="connectBtn" onclick="connect()">Connect</button>
+        <button class="btn btn-primary icon-btn" id="connectBtn" onclick="connect()" title="Connect to Google Sheet" aria-label="Connect to Google Sheet"><i class="fa-solid fa-link" aria-hidden="true"></i></button>
       </div>
       <div class="status-msg" id="setupStatus"></div>
     </div>
@@ -228,7 +232,7 @@
       <div class="tabs">
         <button class="tab-btn active" id="tabAddBtn" onclick="switchTab('add')">Add a contact</button>
         <button class="tab-btn" id="tabLookupBtn" onclick="switchTab('lookup')">Search &amp; lookup</button>
-        <button class="tab-btn refresh-btn" onclick="refreshContacts()" title="Reload contacts from Google Sheets">↻ Refresh</button>
+        <button class="tab-btn refresh-btn" onclick="refreshContacts()" title="Refresh contacts" aria-label="Refresh contacts"><i class="fa-solid fa-rotate" aria-hidden="true"></i></button>
       </div>
 
       <div id="addView">
@@ -437,10 +441,10 @@ function contactActions(person, company){
   const name = String(person.name || '').trim();
   return `
     <div class="contact-actions">
-      <a href="tel:${escapeHtml(phone)}">Call</a>
-      ${digits ? `<a href="https://wa.me/${digits}" target="_blank" rel="noopener">WhatsApp</a>` : ''}
-      ${digits ? `<a href="sms:${escapeHtml(phone)}">SMS</a>` : ''}
-      <a href="${linkedInSearchUrl(name, company)}" target="_blank" rel="noopener">LinkedIn</a>
+      <a href="tel:${escapeHtml(phone)}" title="Call ${escapeHtml(name)}" aria-label="Call ${escapeHtml(name)}"><i class="fa-solid fa-phone" aria-hidden="true"></i></a>
+      ${digits ? `<a href="https://wa.me/${digits}" target="_blank" rel="noopener" title="WhatsApp ${escapeHtml(name)}" aria-label="WhatsApp ${escapeHtml(name)}"><i class="fa-brands fa-whatsapp" aria-hidden="true"></i></a>` : ''}
+      ${digits ? `<a href="sms:${escapeHtml(phone)}" title="Text ${escapeHtml(name)}" aria-label="Text ${escapeHtml(name)}"><i class="fa-solid fa-comment-sms" aria-hidden="true"></i></a>` : ''}
+      <a href="${linkedInSearchUrl(name, company)}" target="_blank" rel="noopener" title="Find ${escapeHtml(name)} on LinkedIn" aria-label="Find ${escapeHtml(name)} on LinkedIn"><i class="fa-brands fa-linkedin" aria-hidden="true"></i></a>
     </div>`;
 }
 
@@ -486,8 +490,8 @@ function renderAdd(){
           "${escapeHtml(q)}" isn't in your Company Directory tab.
         </div>
         ${organizationFormOpen ? renderOrganizationForm(q) : `
-          <button class="btn btn-primary" onclick="openOrganizationForm(${attrJson(q)})">Add organization</button>
-          <button class="btn btn-ghost" onclick="openFormFor(${attrJson(q)})">Add contact only</button>
+          <button class="btn btn-primary icon-btn" onclick="openOrganizationForm(${attrJson(q)})" title="Add organization" aria-label="Add organization"><i class="fa-solid fa-building" aria-hidden="true"></i></button>
+          <button class="btn btn-ghost icon-btn" onclick="openFormFor(${attrJson(q)})" title="Add contact only" aria-label="Add contact only"><i class="fa-solid fa-user-plus" aria-hidden="true"></i></button>
         `}
       </div>`;
     return;
@@ -518,8 +522,8 @@ function renderOrganizationForm(suggestedName){
         <input type="text" id="org-address" placeholder="City, country">
       </div>
       <div class="form-actions">
-        <button class="btn btn-ghost" onclick="cancelOrganizationForm()">Cancel</button>
-        <button class="btn btn-primary" onclick="createOrganization()">Add and continue</button>
+        <button class="btn btn-ghost icon-btn" onclick="cancelOrganizationForm()" title="Cancel" aria-label="Cancel"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+        <button class="btn btn-primary icon-btn" onclick="createOrganization()" title="Add organization and continue" aria-label="Add organization and continue"><i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button>
       </div>
     </div>`;
 }
@@ -575,7 +579,7 @@ function renderCompanyRow(c){
         </div>
         <div class="company-actions">
           <span class="contact-count">${contacts.length} saved</span>
-          <button class="btn btn-primary" onclick="event.stopPropagation(); openFormFor(${attrJson(c.n)})">Add</button>
+          <button class="btn btn-primary icon-btn" onclick="event.stopPropagation(); openFormFor(${attrJson(c.n)})" title="Add contact at ${escapeHtml(c.n)}" aria-label="Add contact at ${escapeHtml(c.n)}"><i class="fa-solid fa-user-plus" aria-hidden="true"></i></button>
         </div>
       </div>
       ${isOpen ? renderPanel(c.n) : ''}
@@ -627,8 +631,8 @@ function renderAddForm(companyName){
       </label>
       <div class="form-actions">
         <span class="form-note" id="formNote"></span>
-        <button class="btn btn-ghost" onclick="closePanel()">Cancel</button>
-        <button class="btn btn-primary" id="saveBtn" onclick="submitContact(${attrJson(companyName)})">Save to sheet</button>
+        <button class="btn btn-ghost icon-btn" onclick="closePanel()" title="Cancel" aria-label="Cancel"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+        <button class="btn btn-primary icon-btn" id="saveBtn" onclick="submitContact(${attrJson(companyName)})" title="Save contact" aria-label="Save contact"><i class="fa-solid fa-floppy-disk" aria-hidden="true"></i></button>
       </div>
     </div>`;
 }
