@@ -141,6 +141,10 @@
     font-size:14px; font-family:'IBM Plex Sans', sans-serif; outline:none; background: #fff;
   }
   .add-form input:focus{ border-color: var(--teal); }
+  .location-input-row{ display:flex; gap:8px; align-items:center; }
+  .location-input-row input{ flex:1; min-width:0; }
+  .location-input-row button{ flex-shrink:0; }
+  .location-help{ font-size:12px; color:var(--text-dim); line-height:1.5; margin:8px 0 0; }
   .field-row{ display:flex; gap:10px; }
   .field-row .field{ flex:1; }
 
@@ -149,6 +153,12 @@
     font-family:'Fraunces', serif; font-size: 14.5px; line-height:1.55; color: #4A3B1F; margin-bottom: 12px;
   }
   .declaration em{ font-style: normal; font-weight:600; border-bottom: 1px solid #C9A467; }
+  .declaration h3{ margin:0 0 12px; font-size:17px; color:var(--teal-dark); }
+  .declaration p{ margin:0 0 12px; overflow-wrap:anywhere; }
+  .declaration p:last-child{ margin-bottom:0; }
+  .declaration .pledge{ padding:12px; background:#fff; border-left:3px solid var(--teal); border-radius:4px; }
+  .add-form .confirm-row{ display:flex; align-items:flex-start; gap:10px; font-size:14px; line-height:1.5; }
+  .confirm-row input{ width:20px; height:20px; flex-shrink:0; accent-color:var(--teal); }
 
   .confirm-row{ display:flex; align-items:flex-start; gap:8px; margin-bottom:14px; font-size:13px; color: var(--text-dim); }
   .confirm-row input{ margin-top:3px; }
@@ -287,9 +297,9 @@
 
       <div id="lookupView" style="display:none;">
         <div class="search-bar">
-          <label for="searchInputLookup">Search by company name</label>
+          <label for="searchInputLookup">Search by company, city or address</label>
           <div class="search-input-row">
-            <input type="text" id="searchInputLookup" placeholder="e.g. Deloitte, Cognizant, Darwinbox…" autocomplete="off">
+            <input type="text" id="searchInputLookup" placeholder="Company or location…" autocomplete="off">
           </div>
           <div class="search-meta" id="searchMetaLookup"></div>
         </div>
@@ -300,6 +310,19 @@
 </div>
 
 <div class="toast" id="toast"></div>
+<dialog id="editRequestDialog" aria-labelledby="requestTitle" style="width:min(94vw,520px);max-height:90vh;overflow:auto;border:0;border-radius:14px;padding:20px;">
+  <form class="add-form" id="editRequestForm">
+    <h2 id="requestTitle">Request an update or deletion</h2>
+    <p id="requestRecord" style="overflow-wrap:anywhere"></p>
+    <p id="requestTicket"></p>
+    <div class="field"><label for="requestAction">Request type</label><select id="requestAction"><option value="Update">Update my information</option><option value="Delete">Delete my information</option></select></div>
+    <div class="field"><label for="requestName">Your name</label><input id="requestName" type="text" required maxlength="100"></div>
+    <div class="field"><label for="requestReply">Your phone or email</label><input id="requestReply" type="text" required maxlength="150"></div>
+    <div class="field"><label for="requestDetails">Details / corrected information</label><textarea id="requestDetails" required maxlength="1500" rows="4" style="width:100%;font:inherit"></textarea></div>
+    <p>The administrator will verify your request before making changes. Continue to WhatsApp, then tap Send. This site does not submit or track the ticket automatically.</p>
+    <div class="form-actions"><button class="btn btn-ghost" type="button" onclick="document.getElementById('editRequestDialog').close()">Cancel</button><button class="btn btn-primary" type="submit">Continue to WhatsApp</button></div>
+  </form>
+</dialog>
 
 <script>
 const URL_STORAGE_KEY = "sheet-api-url-v1";
@@ -419,6 +442,7 @@ function normalizeContacts(raw){
       name: String(person.name ?? person.contactName ?? person.person ?? person.fullName ?? person.n ?? '').trim(),
       phone: String(person.phone ?? person.phoneNumber ?? person.mobile ?? person.p ?? '').trim(),
       email: String(person.email ?? person.emailAddress ?? person.e ?? '').trim(),
+      address: String(person.address ?? person.contactAddress ?? '').trim(),
       ts: person.ts ?? person.timestamp ?? ''
     };
     if(!contact.name && !contact.phone && !contact.email) return;
@@ -497,12 +521,42 @@ function contactActions(person, company){
       ${digits ? `<a href="https://wa.me/${digits}" target="_blank" rel="noopener" title="WhatsApp ${escapeHtml(name)}" aria-label="WhatsApp ${escapeHtml(name)}"><i class="fa-brands fa-whatsapp" aria-hidden="true"></i></a>` : ''}
       ${digits ? `<a href="sms:${escapeHtml(phone)}" title="Text ${escapeHtml(name)}" aria-label="Text ${escapeHtml(name)}"><i class="fa-solid fa-comment-sms" aria-hidden="true"></i></a>` : ''}
       <a href="${linkedInSearchUrl(name, company)}" target="_blank" rel="noopener" title="Find ${escapeHtml(name)} on LinkedIn" aria-label="Find ${escapeHtml(name)} on LinkedIn"><i class="fa-brands fa-linkedin" aria-hidden="true"></i></a>
+      <button type="button" class="btn btn-ghost icon-btn" title="Request update or deletion" aria-label="Request update or deletion for ${escapeHtml(name)}" onclick="openEditRequest(${escapeHtml(JSON.stringify({company, name, phone, email:person.email || ''}))})"><i class="fa-solid fa-pen-to-square" aria-hidden="true"></i></button>
     </div>`;
 }
 function emailLink(email){
   const value = String(email || '').trim();
   return `<a href="mailto:${encodeURIComponent(value)}">${escapeHtml(value)}</a>`;
 }
+
+let pendingEditRequest = null;
+function openEditRequest(record){
+  document.getElementById('editRequestForm').reset();
+  const ticket = 'REQ-' + new Date().toISOString().slice(0,10).replace(/-/g,'') + '-' + crypto.randomUUID();
+  pendingEditRequest = { record, ticket };
+  document.getElementById('requestRecord').textContent = record.company + ' — ' + record.name;
+  document.getElementById('requestTicket').textContent = 'Ticket: ' + ticket;
+  document.getElementById('requestName').value = record.name;
+  document.getElementById('requestReply').value = record.email || record.phone;
+  document.getElementById('editRequestDialog').showModal();
+}
+document.getElementById('editRequestForm').addEventListener('submit', event => {
+  event.preventDefault();
+  if(!pendingEditRequest) return;
+  const {record, ticket} = pendingEditRequest;
+  const requester = document.getElementById('requestName').value.trim();
+  const reply = document.getElementById('requestReply').value.trim();
+  const details = document.getElementById('requestDetails').value.trim();
+  if(!requester || !reply || !details){ showToast('Complete all request fields'); return; }
+  const message = [
+    'Company Contact Book — ' + ticket,
+    'Request: ' + document.getElementById('requestAction').value,
+    'Company: ' + record.company, 'Current name: ' + record.name,
+    'Current phone: ' + record.phone, 'Current email: ' + record.email,
+    'Requester: ' + requester, 'Reply to: ' + reply, 'Details: ' + details
+  ].join('\n');
+  window.open('https://wa.me/919810976296?text=' + encodeURIComponent(message), '_blank', 'noopener,noreferrer');
+});
 
 function matchCompanies(query){
   const q = query.trim().toLowerCase();
@@ -574,14 +628,74 @@ function renderOrganizationForm(suggestedName){
         </div>
       </div>
       <div class="field">
-        <label for="org-address">Address</label>
-        <input type="text" id="org-address" placeholder="City, country">
+        <label for="org-address"><i class="fa-solid fa-location-dot" aria-hidden="true"></i> City / location</label>
+        <div class="location-input-row">
+          <input type="text" id="org-address" placeholder="e.g. Mumbai, Maharashtra, India" aria-describedby="location-help location-status">
+          <button type="button" class="btn btn-primary icon-btn" id="locateBtn" onclick="suggestCurrentCity()" title="Use my current city" aria-label="Use my current city"><i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i></button>
+        </div>
+        <p class="location-help" id="location-help">Type a city or tap the location icon. You can edit the suggestion. Location lookup shares your coordinates with BigDataCloud.</p>
+        <p class="location-help" id="location-status" role="status" aria-live="polite"></p>
       </div>
       <div class="form-actions">
         <button class="btn btn-ghost icon-btn" onclick="cancelOrganizationForm()" title="Cancel" aria-label="Cancel"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
         <button class="btn btn-primary icon-btn" onclick="createOrganization()" title="Add organization and continue" aria-label="Add organization and continue"><i class="fa-solid fa-arrow-right" aria-hidden="true"></i></button>
       </div>
     </div>`;
+}
+
+async function suggestCurrentCity(){
+  const input = document.getElementById('org-address');
+  const button = document.getElementById('locateBtn');
+  const status = document.getElementById('location-status');
+  if(!input || !button || button.disabled) return;
+  if(!window.isSecureContext || !navigator.geolocation){
+    status.textContent = 'Location is unavailable here. Please type your city.';
+    return;
+  }
+  let edited = false;
+  const markEdited = () => { edited = true; };
+  input.addEventListener('input', markEdited);
+  button.disabled = true;
+  status.textContent = 'Finding your city… Allow location access when asked.';
+  const controller = new AbortController();
+  let timer;
+  try{
+    const position = await new Promise((resolve, reject) =>
+      navigator.geolocation.getCurrentPosition(resolve, reject, {
+        enableHighAccuracy: true, timeout: 15000, maximumAge: 0
+      })
+    );
+    if(!input.isConnected) return;
+    const query = new URLSearchParams({
+      latitude: position.coords.latitude,
+      longitude: position.coords.longitude,
+      localityLanguage: 'en'
+    });
+    timer = setTimeout(() => controller.abort(), 12000);
+    const response = await fetch('https://api.bigdatacloud.net/data/reverse-geocode-client?' + query, {
+      signal: controller.signal, cache: 'no-store'
+    });
+    if(!response.ok) throw new Error('Location lookup failed');
+    const place = await response.json();
+    const city = String(place.city || '').trim();
+    if(!city) throw new Error('No city found');
+    const location = [...new Set([city, place.principalSubdivision, place.countryName].filter(Boolean))].join(', ');
+    if(!input.isConnected) return;
+    if(edited){
+      status.textContent = 'Suggested city: ' + location + '. Your typed location has been kept.';
+    }else{
+      input.value = location;
+      status.textContent = 'Suggested city — please check and edit if needed.';
+    }
+  }catch(error){
+    if(input.isConnected) status.textContent = error.code === 1
+      ? 'Location permission was denied. You can type your city instead.'
+      : 'Could not determine your city. Please type it or try again.';
+  }finally{
+    clearTimeout(timer);
+    input.removeEventListener('input', markEdited);
+    if(button.isConnected) button.disabled = false;
+  }
 }
 
 function openOrganizationForm(suggestedName){
@@ -678,12 +792,16 @@ function renderAddForm(companyName){
         <label>Email address</label>
         <input type="email" id="f-email" placeholder="name@example.com">
       </div>
+      <div class="field">
+        <label for="f-address">Your address (optional)</label>
+        <input type="text" id="f-address" placeholder="Area, city, state, country" maxlength="500" autocomplete="street-address">
+      </div>
       <div class="declaration" id="declarationText">
-        I declare that my name is <em>______</em> and I am currently working at <em>${escapeHtml(companyName)}</em>.
+        ${renderDeclaration('', companyName)}
       </div>
       <label class="confirm-row">
         <input type="checkbox" id="f-confirm">
-        <span>I confirm the above declaration is accurate and I'm giving this contact information myself.</span>
+        <span>I confirm that this information is accurate, I am sharing my own contact details, and I agree to the pledge and contact consent above.</span>
       </label>
       <div class="form-actions">
         <span class="form-note" id="formNote"></span>
@@ -693,10 +811,17 @@ function renderAddForm(companyName){
     </div>`;
 }
 
+function renderDeclaration(name, companyName){
+  return `<h3><i class="fa-solid fa-handshake" aria-hidden="true"></i> My declaration &amp; pledge</h3>
+    <p>I declare that my name is <em>${name ? escapeHtml(name) : '______'}</em> and I am currently working at <em>${escapeHtml(companyName)}</em>.</p>
+    <p class="pledge">I pledge to help my brothers and sisters in their search for jobs that match their skills and experience.</p>
+    <p>I consent to being contacted, including by phone, about job opportunities, referrals and career support.</p>`;
+}
+
 function updateDeclaration(companyName){
   const name = document.getElementById('f-name').value.trim();
   const el = document.getElementById('declarationText');
-  el.innerHTML = `I declare that my name is <em>${name ? escapeHtml(name) : '______'}</em> and I am currently working at <em>${escapeHtml(companyName)}</em>.`;
+  el.innerHTML = renderDeclaration(name, companyName);
 }
 
 function toggleCompany(name){
@@ -716,6 +841,7 @@ async function submitContact(companyName){
   const name = document.getElementById('f-name').value.trim();
   const phone = document.getElementById('f-phone').value.trim();
   const email = document.getElementById('f-email').value.trim();
+  const address = document.getElementById('f-address').value.trim();
   const confirmed = document.getElementById('f-confirm').checked;
 
   if(!name || !phone || !email){ showToast('Fill in name, phone, and email'); return; }
@@ -739,13 +865,13 @@ async function submitContact(companyName){
     const res = await fetch(apiUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ company: companyName, name, phone, email })
+      body: JSON.stringify({ company: companyName, name, phone, email, address })
     });
     const json = await res.json();
     if(json.error) throw new Error(json.error);
 
     if(!ledger[companyName]) ledger[companyName] = [];
-    ledger[companyName].push({ name, phone, email, ts: Date.now() });
+    ledger[companyName].push({ name, phone, email, address, ts: Date.now() });
 
     openCompany = null;
     saving = false;
@@ -803,7 +929,11 @@ function renderLookup(){
     return;
   }
 
-  const matches = matchCompanies(q);
+  const terms = q.toLowerCase().split(/\s+/);
+  const matches = companies.filter(c => {
+    const searchable = [c.n, c.a].filter(Boolean).join(' ').toLowerCase();
+    return terms.every(term => searchable.includes(term));
+  });
   const LIMIT = 25;
   const shown = matches.slice(0, LIMIT);
 
@@ -821,7 +951,7 @@ function renderLookupBlock(c){
       <div class="company-info">
         <h3>${escapeHtml(c.n)}</h3>
         <div class="company-tags">${escapeHtml(c.s)} · ${escapeHtml(c.t)}</div>
-        <div class="company-address">${escapeHtml(c.a)}</div>
+        <div class="company-address"><i class="fa-solid fa-location-dot" aria-hidden="true"></i> ${escapeHtml(c.a || 'Location not provided')}</div>
       </div>
       <div class="panel" style="border-top:none; margin-top:12px; padding-top:0;">
         ${people.length ? `
