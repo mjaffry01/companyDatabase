@@ -1,0 +1,244 @@
+/**
+ * Free backend for the Company Contact Book — Google Apps Script Web App.
+ * No Firebase, no Cloud Functions, no billing account required.
+ *
+ * SETUP (see GOOGLE-LOGIN-SETUP.md for the full walkthrough):
+ * 1. Go to https://script.google.com/home -> New project. Do NOT use
+ *    Extensions -> Apps Script from inside the spreadsheet -- that opens the
+ *    *existing* bound script, which is the old public backend and must stay
+ *    untouched until this new one is confirmed working.
+ * 2. Paste this whole file in as Code.gs (replacing the default content).
+ * 3. Fill in CLIENT_ID below with your OAuth Client ID
+ *    (from https://console.cloud.google.com/apis/credentials).
+ * 4. Deploy -> New deployment -> Web app.
+ *      Execute as: Me
+ *      Who has access: Anyone
+ * 5. Copy the resulting /exec URL into auth-config.js as APPS_SCRIPT_URL.
+ *
+ * Security model:
+ * - Every request must carry a Google ID token (idToken) obtained from the
+ *   Google Identity Services "Sign in with Google" button on the frontend.
+ * - The token is verified against the tokeninfo endpoint Google provides, on every
+ *   request (audience, issuer, email_verified are all checked).
+ * - The verified email must exist in the "Members" sheet tab with
+ *   Approved = TRUE before any company/contact data is returned.
+ * - New sign-ins are recorded automatically as Approved = FALSE; the
+ *   administrator flips that to TRUE by hand after verifying the person.
+ */
+
+// ---- Fill this in ----
+const CLIENT_ID = '414131434266-0kbpen3881ik4e32vjlucd63n3a4ssj9.apps.googleusercontent.com';
+
+// ---- Sheet layout (edit only if your tab/column names differ) ----
+// This is a STANDALONE script (not bound to the spreadsheet), so it needs the
+// spreadsheet's ID explicitly rather than SpreadsheetApp.getActiveSpreadsheet().
+// It is deliberately kept separate from the spreadsheet's existing bound script
+// (the old public backend) so that one is untouched until ready to retire it.
+const SPREADSHEET_ID = '1cgJ8wGEPkQW8QbrBuCqa9Z1Pcq62yma2R3N9YKoMSnk';
+const COMPANY_SHEET = 'Company Directory';
+const CONTACTS_SHEET = 'ShiaContacts';
+const MEMBERS_SHEET = 'Members';
+const COMPANY_HEADERS = { n: 'Company Name', s: 'Company Type', t: 'Size', a: 'Hyderabad Office Address' };
+
+function ss(){ return SpreadsheetApp.openById(SPREADSHEET_ID); }
+
+function json(obj){
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+function doGet(e){
+  return json({ error: 'This endpoint only accepts POST requests.' });
+}
+
+function doPost(e){
+  try{
+    const body = JSON.parse((e.postData && e.postData.contents) || '{}');
+    const payload = verifyToken(body.idToken);
+    const email = payload.email;
+    const action = body.action;
+
+    if(action === 'membership'){
+      return json({ approved: checkMembership(email, payload.sub) });
+    }
+
+    if(!isApproved(email)){
+      throw new Error('Administrator approval is required.');
+    }
+    if(action === 'companies') return json({ companies: getCompanies() });
+    if(action === 'contacts') return json({ contacts: getContacts() });
+    if(action === 'addContact') return json(addContact(email, body));
+    throw new Error('Unknown action.');
+  }catch(error){
+    return json({ error: (error && error.message) || String(error) });
+  }
+}
+
+// ---- Google ID token verification ----
+function verifyToken(idToken){
+  if(!idToken) throw new Error('Sign in with Google.');
+  const response = UrlFetchApp.fetch(
+    'https://oauth2.googleapis.com/tokeninfo?id_token=' + encodeURIComponent(idToken),
+    { muteHttpExceptions: true }
+  );
+  if(response.getResponseCode() !== 200) throw new Error('Your sign-in expired. Please sign in again.');
+  const payload = JSON.parse(response.getContentText());
+  if(payload.aud !== CLIENT_ID) throw new Error('Sign-in is not valid for this app.');
+  if(payload.email_verified !== 'true' && payload.email_verified !== true){
+    throw new Error('Your Google account email is not verified.');
+  }
+  if(payload.iss !== 'accounts.google.com' && payload.iss !== 'https://accounts.google.com'){
+    throw new Error('Invalid token issuer.');
+  }
+  return payload; // { email, sub, email_verified, aud, iss, ... }
+}
+
+// ---- Membership (approval) ----
+function getMembersSheet(){
+  let sheet = ss().getSheetByName(MEMBERS_SHEET);
+  if(!sheet){
+    sheet = ss().insertSheet(MEMBERS_SHEET);
+    sheet.appendRow(['Email', 'Approved', 'Google Account ID', 'First seen']);
+  }
+  return sheet;
+}
+
+function findMemberRow(sheet, email){
+  const data = sheet.getDataRange().getValues();
+  const target = String(email).toLowerCase();
+  for(let i = 1; i < data.length; i++){
+    if(String(data[i][0]).toLowerCase() === target) return i + 1; // 1-based sheet row
+  }
+  return -1;
+}
+
+function isApproved(email){
+  const sheet = getMembersSheet();
+  const row = findMemberRow(sheet, email);
+  return row !== -1 && sheet.getRange(row, 2).getValue() === true;
+}
+
+function checkMembership(email, sub){
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try{
+    const sheet = getMembersSheet();
+    const row = findMemberRow(sheet, email);
+    if(row === -1){
+      sheet.appendRow([email, false, sub, new Date()]);
+      return false;
+    }
+    return sheet.getRange(row, 2).getValue() === true;
+  }finally{
+    lock.releaseLock();
+  }
+}
+
+// ---- Company Directory ----
+function findHeaderRow(sheet, firstColumnValue){
+  const rowsToScan = Math.min(15, sheet.getLastRow());
+  if(rowsToScan < 1) return -1;
+  const values = sheet.getRange(1, 1, rowsToScan, 1).getValues();
+  for(let i = 0; i < values.length; i++){
+    if(String(values[i][0]).trim() === firstColumnValue) return i + 1;
+  }
+  return -1;
+}
+
+function getCompanies(){
+  const sheet = ss().getSheetByName(COMPANY_SHEET);
+  if(!sheet) throw new Error('"' + COMPANY_SHEET + '" sheet not found.');
+  const headerRow = findHeaderRow(sheet, COMPANY_HEADERS.n);
+  if(headerRow === -1) throw new Error('Could not find the Company Directory header row.');
+  const numRows = sheet.getLastRow() - headerRow + 1;
+  if(numRows < 1) return [];
+  const values = sheet.getRange(headerRow, 1, numRows, sheet.getLastColumn()).getValues();
+  const headers = values[0].map(h => String(h).trim());
+  const idx = {
+    n: headers.indexOf(COMPANY_HEADERS.n),
+    s: headers.indexOf(COMPANY_HEADERS.s),
+    t: headers.indexOf(COMPANY_HEADERS.t),
+    a: headers.indexOf(COMPANY_HEADERS.a)
+  };
+  if(Object.keys(idx).some(key => idx[key] < 0)){
+    throw new Error('Company Directory headers changed; update COMPANY_HEADERS in Code.gs.');
+  }
+  const companies = [];
+  for(let i = 1; i < values.length; i++){
+    const row = values[i];
+    if(!row[idx.n]) continue;
+    companies.push({
+      n: String(row[idx.n]),
+      s: String(row[idx.s] || ''),
+      t: String(row[idx.t] || ''),
+      a: String(row[idx.a] || '')
+    });
+  }
+  return companies;
+}
+
+// ---- Contacts ----
+const CONTACTS_HEADER = ['Company', 'Name', 'Phone', 'Email', 'Timestamp', 'Address', 'Owner Email', 'Contact ID'];
+
+function ensureContactsHeader(sheet){
+  const first = sheet.getRange(1, 1, 1, 2).getValues()[0];
+  if(first[0] === 'Company' && first[1] === 'Name') return; // header already present
+  sheet.insertRowBefore(1); // preserves any existing data rows below
+  sheet.getRange(1, 1, 1, CONTACTS_HEADER.length).setValues([CONTACTS_HEADER]);
+}
+
+function getContacts(){
+  const sheet = ss().getSheetByName(CONTACTS_SHEET);
+  if(!sheet) throw new Error('"' + CONTACTS_SHEET + '" sheet not found.');
+  ensureContactsHeader(sheet);
+  const values = sheet.getDataRange().getValues();
+  const contacts = {};
+  for(let i = 1; i < values.length; i++){
+    const row = values[i];
+    if(!row[0]) continue;
+    const company = String(row[0]);
+    (contacts[company] = contacts[company] || []).push({
+      name: String(row[1] || ''),
+      phone: String(row[2] || ''),
+      email: String(row[3] || ''),
+      ts: row[4] ? String(row[4]) : '',
+      address: String(row[5] || '')
+    });
+  }
+  return contacts;
+}
+
+function clampText(value, max){
+  return typeof value === 'string' ? value.trim().slice(0, max || 500) : '';
+}
+
+function normalizeKey(value){
+  return String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function addContact(ownerEmail, data){
+  const company = clampText(data.company, 200);
+  const name = clampText(data.name, 150);
+  const phone = clampText(data.phone, 40);
+  const address = clampText(data.address, 500);
+  const email = clampText(data.email, 254);
+  if(!company || !name || !phone || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || data.confirmed !== true){
+    throw new Error('Complete your contact details and declaration.');
+  }
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try{
+    const sheet = ss().getSheetByName(CONTACTS_SHEET);
+    if(!sheet) throw new Error('"' + CONTACTS_SHEET + '" sheet not found.');
+    ensureContactsHeader(sheet);
+    const values = sheet.getDataRange().getValues();
+    for(let i = 1; i < values.length; i++){
+      if(normalizeKey(values[i][0]) === normalizeKey(company) && normalizeKey(values[i][1]) === normalizeKey(name)){
+        throw new Error('This contact is already saved.');
+      }
+    }
+    sheet.appendRow([company, name, phone, email, new Date(), address, ownerEmail, Utilities.getUuid()]);
+    return { ok: true };
+  }finally{
+    lock.releaseLock();
+  }
+}

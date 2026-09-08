@@ -1,4 +1,4 @@
-const CACHE_NAME = 'company-contact-book-v1';
+const CACHE_NAME = 'company-contact-book-v3-public';
 const APP_SHELL = ['./', './index.html', './manifest.json'];
 
 self.addEventListener('install', event => {
@@ -9,7 +9,7 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', event => {
   event.waitUntil(
     caches.keys().then(keys => Promise.all(
-      keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))
+      keys.filter(key => key.startsWith('company-contact-book-') && key !== CACHE_NAME).map(key => caches.delete(key))
     ))
   );
   self.clients.claim();
@@ -19,10 +19,11 @@ self.addEventListener('fetch', event => {
   if(event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
   if(url.origin !== self.location.origin) return;
+  if(url.search || !APP_SHELL.some(path => new URL(path,self.registration.scope).href === url.href)) return;
   event.respondWith(
     fetch(event.request).then(response => {
       const copy = response.clone();
-      caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
+      if(response.ok) caches.open(CACHE_NAME).then(cache => cache.put(event.request, copy));
       return response;
     }).catch(() => caches.match(event.request))
   );

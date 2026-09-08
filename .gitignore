@@ -1,0 +1,5 @@
+node_modules/
+deprecated-firebase-backend/functions/.env*
+.firebase/
+*-debug.log
+*service-account*.json

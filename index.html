@@ -53,6 +53,7 @@
   .masthead p{ color:#9BA3AC; font-size:15px; max-width:520px; margin: 0 auto; line-height:1.5; }
 
   .ledger{ background: var(--paper); border-radius: 16px; box-shadow: var(--paper-shadow); border: 1px solid #00000022; overflow:hidden; }
+  [hidden]{ display:none !important; }
 
   .setup{ padding: 32px 30px 34px; }
   .setup h2{ font-family:'Fraunces', serif; font-size:20px; margin:0 0 8px; }
@@ -250,22 +251,14 @@
     <p>Help each other search for opportunities and find jobs by sharing useful company contacts.</p>
   </div>
 
-  <div class="ledger" id="ledgerRoot">
-    <div class="setup" id="setupPane" style="display:none;">
-      <h2>Connect your Google Sheet</h2>
-      <p>This page talks to your spreadsheet through a small Apps Script bridge. One-time setup:</p>
-      <ol>
-        <li>Open your <b>Jobfinder</b> spreadsheet → <b>Extensions → Apps Script</b>.</li>
-        <li>Paste in the <code>Code.gs</code> script, save.</li>
-        <li>Click <b>Deploy → New deployment</b> → type <b>Web app</b>. Set <b>Execute as: Me</b>, <b>Who has access: Anyone</b>.</li>
-        <li>Copy the Web app URL (ends in <code>/exec</code>) and paste it below.</li>
-      </ol>
-      <div class="url-row">
-        <input type="text" id="urlInput" placeholder="https://script.google.com/macros/s/…/exec" value="https://script.google.com/macros/s/AKfycbxQswsvwOSRrTLC3m_evsfbmrb-nVrncYZtlsmzB0X5mdlqk45sYtcUl1ofGRWg_tzj/exec">
-        <button class="btn btn-primary icon-btn" id="connectBtn" onclick="connect()" title="Connect to Google Sheet" aria-label="Connect to Google Sheet"><i class="fa-solid fa-link" aria-hidden="true"></i></button>
-      </div>
-      <div class="status-msg" id="setupStatus"></div>
-    </div>
+  <section class="ledger setup" id="authGate">
+    <h2>Sign in required</h2>
+    <p id="authStatus" role="status">Connecting…</p>
+    <div id="googleSignInDiv" hidden></div>
+    <button class="btn btn-primary" id="checkAccessBtn" onclick="checkAccess()" hidden>Check access</button>
+    <button class="btn btn-ghost" id="logoutBtn" onclick="logout()" hidden>Sign out</button>
+  </section>
+  <div class="ledger" id="ledgerRoot" hidden>
 
     <div id="mainPane">
       <div class="tabs">
@@ -324,9 +317,11 @@
   </form>
 </dialog>
 
+<script src="auth-config.js"></script>
+<script src="auth.js"></script>
+<script src="https://accounts.google.com/gsi/client"></script>
+<script>initGoogleSignIn();</script>
 <script>
-const URL_STORAGE_KEY = "sheet-api-url-v1";
-let apiUrl = null;
 let companies = [];
 let ledger = {};
 let openCompany = null;
@@ -353,27 +348,12 @@ async function installApp(){
   installPrompt = null;
 }
 
-async function readSavedUrl(){
-  try{
-    if(window.storage?.get){
-      const res = await window.storage.get(URL_STORAGE_KEY, false);
-      return res && res.value ? res.value : null;
-    }
-    return window.localStorage.getItem(URL_STORAGE_KEY);
-  }catch(e){ return null; }
-}
-async function saveUrl(url){
-  try{
-    if(window.storage?.set) await window.storage.set(URL_STORAGE_KEY, url, false);
-    else window.localStorage.setItem(URL_STORAGE_KEY, url);
-  }catch(e){}
-}
 
 function escapeHtml(str){
   return String(str).replace(/[&<>"']/g, s => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));
 }
 function attrJson(value){
-  return JSON.stringify(value).replace(/"/g, '&quot;');
+  return escapeHtml(JSON.stringify(value));
 }
 function showToast(msg){
   const t = document.getElementById('toast');
@@ -384,58 +364,57 @@ function showToast(msg){
 }
 
 async function init(){
-  const stored = await readSavedUrl();
-  if(stored){ document.getElementById('urlInput').value = stored; }
-  await connect(document.getElementById('urlInput').value, true);
+  await connect();
 }
 
-async function connect(prefillUrl, silent){
-  const url = (prefillUrl || document.getElementById('urlInput').value || '').trim();
-  const statusEl = document.getElementById('setupStatus');
-  const btn = document.getElementById('connectBtn');
+async function contactApi(action, data){
+  if(!window.idToken) throw new Error('Please sign in first.');
+  if(!window.APPS_SCRIPT_URL || window.APPS_SCRIPT_URL.indexOf('PASTE_') === 0) throw new Error('The contact book backend is not configured yet.');
+  const response = await fetch(window.APPS_SCRIPT_URL, {
+    method: 'POST',
+    headers: {'Content-Type': 'text/plain;charset=utf-8'},
+    body: JSON.stringify({idToken: window.idToken, action, ...data}),
+    cache: 'no-store'
+  });
+  if(!response.ok) throw new Error('Server returned ' + response.status);
+  const json = await response.json();
+  if(json.error) throw new Error(json.error);
+  return json;
+}
 
-  if(!url){
-    statusEl.textContent = 'Paste your Apps Script Web app URL first.';
-    statusEl.className = 'status-msg error';
-    return;
-  }
-  statusEl.textContent = 'Connecting…';
-  statusEl.className = 'status-msg pending';
-  if(btn) btn.disabled = true;
+window.clearContactSession = function(){
+  companies = []; ledger = {}; openCompany = null; pendingEditRequest = null;
+  document.getElementById('ledgerRoot').hidden = true;
+  document.getElementById('editRequestDialog').close();
+  document.getElementById('editRequestForm').reset();
+  for(const id of ['resultsAdd','resultsLookup','bookBody']) document.getElementById(id).replaceChildren();
+  document.getElementById('kickerLine').textContent = 'Members contact book';
+};
 
+async function connect(){
+  const checkBtn = document.getElementById('checkAccessBtn');
+  checkBtn.disabled = true;
   try{
-    const cacheBust = () => `_=${Date.now()}`;
-    const compRes = await fetch(url + '?action=companies&' + cacheBust(), { cache: 'no-store' });
-    const compJson = await compRes.json();
-    if(compJson.error) throw new Error(compJson.error);
+    const [compJson, contJson] = await Promise.all([contactApi('companies'), contactApi('contacts')]);
     companies = compJson.companies || [];
-
-    const contRes = await fetch(url + '?action=contacts&' + cacheBust(), { cache: 'no-store' });
-    const contJson = await contRes.json();
-    if(contJson.error) throw new Error(contJson.error);
-    ledger = normalizeContacts(contJson.contacts || contJson.data || []);
-
-    apiUrl = url;
-    await saveUrl(url);
-
-    document.getElementById('setupPane').style.display = 'none';
+    ledger = normalizeContacts(contJson.contacts || {});
+    document.getElementById('authGate').hidden = true;
+    document.getElementById('ledgerRoot').hidden = false;
     document.getElementById('mainPane').style.display = 'block';
     updateKicker();
     renderAll();
-    if(!silent) showToast('Connected to your Google Sheet');
+    if(currentTab === 'lookup') renderLookup();
   }catch(err){
-    statusEl.textContent = 'Could not connect: ' + err.message + '. Check the URL and that access is set to "Anyone".';
-    statusEl.className = 'status-msg error';
-    document.getElementById('setupPane').style.display = 'block';
-    document.getElementById('mainPane').style.display = 'none';
-    document.getElementById('kickerLine').textContent = 'Not connected yet — see setup below';
+    document.getElementById('authStatus').textContent = 'Could not load contacts: ' + err.message;
+    document.getElementById('authGate').hidden = false;
+    document.getElementById('ledgerRoot').hidden = true;
   }finally{
-    if(btn) btn.disabled = false;
+    checkBtn.disabled = false;
   }
 }
 
 function normalizeContacts(raw){
-  const result = {};
+  const result = Object.create(null);
   const add = (company, person) => {
     if(!company) return;
     const contact = {
@@ -464,10 +443,9 @@ function normalizeContacts(raw){
 }
 
 async function refreshContacts(){
-  if(!apiUrl) return;
+  if(!window.idToken) return;
   try{
-    const res = await fetch(apiUrl + '?action=contacts&_=' + Date.now(), { cache: 'no-store' });
-    const json = await res.json();
+    const json = await contactApi('contacts');
     if(json.error) throw new Error(json.error);
     ledger = normalizeContacts(json.contacts || json.data || []);
     updateKicker();
@@ -482,15 +460,9 @@ async function refreshContacts(){
 function updateKicker(){
   const totalPeople = Object.values(ledger).reduce((s,a)=>s+a.length,0);
   document.getElementById('kickerLine').innerHTML =
-    `Connected · <b>${companies.length} companies</b> · <b>${totalPeople} contacts</b> · <button onclick="disconnect()">change connection</button> <button class="install-btn" id="installBtn" onclick="installApp()" title="Install Contact Book on this device" aria-label="Install Contact Book on this device"><i class="fa-solid fa-download" aria-hidden="true"></i> Install app</button>`;
+    `Connected · <b>${companies.length} companies</b> · <b>${totalPeople} contacts</b> ·  <button class="install-btn" id="installBtn" onclick="installApp()" title="Install Contact Book on this device" aria-label="Install Contact Book on this device"><i class="fa-solid fa-download" aria-hidden="true"></i> Install app</button>`;
 }
 
-function disconnect(){
-  document.getElementById('setupPane').style.display = 'block';
-  document.getElementById('mainPane').style.display = 'none';
-  document.getElementById('setupStatus').textContent = '';
-  document.getElementById('setupStatus').className = 'status-msg';
-}
 
 function switchTab(tab){
   currentTab = tab;
@@ -862,12 +834,7 @@ async function submitContact(companyName){
   if(note) note.textContent = 'Writing to your sheet…';
 
   try{
-    const res = await fetch(apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ company: companyName, name, phone, email, address })
-    });
-    const json = await res.json();
+    const json = await contactApi('addContact', { company: companyName, name, phone, email, address, confirmed });
     if(json.error) throw new Error(json.error);
 
     if(!ledger[companyName]) ledger[companyName] = [];
@@ -972,7 +939,6 @@ function renderLookupBlock(c){
 document.getElementById('searchInputAdd').addEventListener('input', renderAdd);
 document.getElementById('searchInputLookup').addEventListener('input', renderLookup);
 if('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
-init();
 </script>
 </body>
 </html>
