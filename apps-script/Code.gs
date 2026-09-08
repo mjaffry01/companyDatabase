@@ -1,5 +1,5 @@
 /**
- * Free backend for the Company Contact Book — Google Apps Script Web App.
+ * Free backend for the Company Contact Book - Google Apps Script Web App.
  * No Firebase, no Cloud Functions, no billing account required.
  *
  * SETUP (see GOOGLE-LOGIN-SETUP.md for the full walkthrough):
@@ -276,6 +276,13 @@ function getFileExtension(fileName){
   return match ? match[1].toLowerCase() : '';
 }
 
+// Accepts a Google Docs URL like https://docs.google.com/document/d/<id>/edit
+// and returns just the <id>, or '' if the URL doesn't match that shape.
+function extractGoogleDocId(url){
+  const match = /^https:\/\/docs\.google\.com\/document\/d\/([a-zA-Z0-9_-]+)/.exec(String(url || '').trim());
+  return match ? match[1] : '';
+}
+
 function uploadResume(submitterEmail, data){
   const name = clampText(data.name, 150);
   const email = clampText(data.email, 254);
@@ -283,41 +290,66 @@ function uploadResume(submitterEmail, data){
   const status = clampText(data.status, 60);
   const fileName = clampText(data.fileName, 200);
   const dataBase64 = String(data.dataBase64 || '');
+  const googleDocUrl = clampText(data.googleDocUrl, 500);
 
   if(!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !status || data.confirmed !== true){
     throw new Error('Complete your name, email, status and declaration.');
   }
-  if(!fileName || !dataBase64){
-    throw new Error('Choose a resume file to upload.');
-  }
-  const extension = getFileExtension(fileName);
-  const mimeType = RESUME_ALLOWED_EXTENSIONS[extension];
-  if(!mimeType){
-    throw new Error('Only .doc, .docx, .pdf and .html/.htm resumes are accepted.');
-  }
-
-  let bytes;
-  try{
-    bytes = Utilities.base64Decode(dataBase64);
-  }catch(err){
-    throw new Error('The uploaded file could not be read. Please try again.');
-  }
-  if(bytes.length < 1){
-    throw new Error('The uploaded file is empty.');
-  }
-  if(bytes.length > RESUME_MAX_BYTES){
-    throw new Error('Resume file is larger than 5 MB. Please upload a smaller file.');
+  if(!fileName && !googleDocUrl){
+    throw new Error('Choose a resume file or paste a Google Doc link.');
   }
 
   const lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try{
     const folder = getOrCreateResumeFolder();
-    const safeBase = fileName.replace(/[\\/:*?"<>|]/g, '_').slice(0, 150);
-    const storedName = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Etc/UTC', 'yyyy-MM-dd_HHmmss') + '_' + safeBase;
-    const blob = Utilities.newBlob(bytes, mimeType, storedName);
-    const file = folder.createFile(blob);
-    logResumeUpload([new Date(), name, email, phone, status, fileName, file.getUrl(), submitterEmail]);
+    let storedName, driveUrl, loggedFileName;
+
+    if(googleDocUrl){
+      const docId = extractGoogleDocId(googleDocUrl);
+      if(!docId){
+        throw new Error('That doesn\'t look like a Google Doc link (should start with docs.google.com/document/d/…).');
+      }
+      let source;
+      try{
+        source = DriveApp.getFileById(docId);
+      }catch(err){
+        throw new Error('Could not open that Google Doc. Make sure sharing is set to "Anyone with the link".');
+      }
+      storedName = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Etc/UTC', 'yyyy-MM-dd_HHmmss') + '_' + source.getName();
+      const copy = source.makeCopy(storedName, folder);
+      driveUrl = copy.getUrl();
+      loggedFileName = source.getName();
+    }else{
+      if(!dataBase64){
+        throw new Error('Choose a resume file to upload.');
+      }
+      const extension = getFileExtension(fileName);
+      const mimeType = RESUME_ALLOWED_EXTENSIONS[extension];
+      if(!mimeType){
+        throw new Error('Only .doc, .docx, .pdf and .html/.htm resumes are accepted.');
+      }
+      let bytes;
+      try{
+        bytes = Utilities.base64Decode(dataBase64);
+      }catch(err){
+        throw new Error('The uploaded file could not be read. Please try again.');
+      }
+      if(bytes.length < 1){
+        throw new Error('The uploaded file is empty.');
+      }
+      if(bytes.length > RESUME_MAX_BYTES){
+        throw new Error('Resume file is larger than 5 MB. Please upload a smaller file.');
+      }
+      const safeBase = fileName.replace(/[\\/:*?"<>|]/g, '_').slice(0, 150);
+      storedName = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Etc/UTC', 'yyyy-MM-dd_HHmmss') + '_' + safeBase;
+      const blob = Utilities.newBlob(bytes, mimeType, storedName);
+      const file = folder.createFile(blob);
+      driveUrl = file.getUrl();
+      loggedFileName = fileName;
+    }
+
+    logResumeUpload([new Date(), name, email, phone, status, loggedFileName, driveUrl, submitterEmail]);
     return { ok: true };
   }finally{
     lock.releaseLock();

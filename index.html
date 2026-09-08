@@ -309,7 +309,7 @@
           <div class="declaration">
             <h3><i class="fa-solid fa-file-lines" aria-hidden="true"></i> Resume drop for job seekers</h3>
             <p>This tab is for people who have <em>recently graduated</em> or <em>recently lost a job</em> and want their resume kept on file for referrals. It is <em>not</em> for people currently employed and looking to switch — that flow is planned for a future release.</p>
-            <p>Accepted formats: <em>.doc / .docx</em>, <em>.pdf</em> and <em>.html / .htm</em>, up to 5&nbsp;MB. Your resume is saved to a private Google Drive folder for the community's referral use.</p>
+            <p>Accepted formats: <em>.doc / .docx</em>, <em>.pdf</em>, <em>.html / .htm</em>, up to 5&nbsp;MB — or paste a link to a <em>Google Doc</em> instead of uploading a file. Your resume is saved to a private Google Drive folder for the community's referral use.</p>
           </div>
           <div class="add-form" id="resumeFormWrap">
             <div class="field-row">
@@ -336,7 +336,12 @@
             </div>
             <div class="field">
               <label for="r-file">Resume file (.doc, .docx, .pdf, .html, .htm — max 5 MB)</label>
-              <input type="file" id="r-file" accept=".doc,.docx,.pdf,.html,.htm">
+              <input type="file" id="r-file" accept=".doc,.docx,.pdf,.html,.htm" oninput="syncResumeInputs('file')">
+            </div>
+            <div style="text-align:center;color:var(--text-dim);font-size:12px;margin:2px 0;">— or —</div>
+            <div class="field">
+              <label for="r-gdoc-url">Google Doc link (set sharing to "Anyone with the link")</label>
+              <input type="text" id="r-gdoc-url" placeholder="https://docs.google.com/document/d/…" oninput="syncResumeInputs('link')">
             </div>
             <label class="confirm-row">
               <input type="checkbox" id="r-confirm">
@@ -1019,16 +1024,33 @@ function fileToBase64(file){
   });
 }
 
+const GDOC_URL_PATTERN = /^https:\/\/docs\.google\.com\/document\/d\/[a-zA-Z0-9_-]+/;
+
 function resetResumeForm(){
   document.getElementById('r-name').value = '';
   document.getElementById('r-phone').value = '';
   document.getElementById('r-email').value = '';
   document.getElementById('r-status').value = '';
   document.getElementById('r-file').value = '';
+  document.getElementById('r-gdoc-url').value = '';
+  document.getElementById('r-file').disabled = false;
+  document.getElementById('r-gdoc-url').disabled = false;
   document.getElementById('r-confirm').checked = false;
   document.getElementById('resumeFormNote').textContent = '';
   document.getElementById('resumeFormWrap').hidden = false;
   document.getElementById('resumeThanksPanel').hidden = true;
+}
+
+// A resume comes from either the file input or the Google Doc link, not both —
+// picking one disables the other so it's clear only one will be used.
+function syncResumeInputs(source){
+  const fileInput = document.getElementById('r-file');
+  const urlInput = document.getElementById('r-gdoc-url');
+  if(source === 'file'){
+    urlInput.disabled = !!(fileInput.files && fileInput.files[0]);
+  }else{
+    fileInput.disabled = urlInput.value.trim().length > 0;
+  }
 }
 
 async function submitResume(){
@@ -1040,18 +1062,25 @@ async function submitResume(){
   const fileInput = document.getElementById('r-file');
   const confirmed = document.getElementById('r-confirm').checked;
   const file = fileInput.files && fileInput.files[0];
+  const googleDocUrl = document.getElementById('r-gdoc-url').value.trim();
 
   if(!name || !email || !status){ showToast('Fill in your name, email and situation'); return; }
-  if(!file){ showToast('Choose a resume file to upload'); return; }
+  if(!file && !googleDocUrl){ showToast('Choose a resume file or paste a Google Doc link'); return; }
   if(!confirmed){ showToast('Please confirm the declaration first'); return; }
 
-  const extension = fileExtension(file.name);
-  if(!RESUME_ALLOWED_EXTENSIONS.includes(extension)){
-    showToast('Only .doc, .docx, .pdf and .html/.htm resumes are accepted');
-    return;
-  }
-  if(file.size > RESUME_MAX_BYTES){
-    showToast('Resume file is larger than 5 MB — please upload a smaller file');
+  let dataBase64 = '', fileName = '';
+  if(file){
+    const extension = fileExtension(file.name);
+    if(!RESUME_ALLOWED_EXTENSIONS.includes(extension)){
+      showToast('Only .doc, .docx, .pdf and .html/.htm resumes are accepted');
+      return;
+    }
+    if(file.size > RESUME_MAX_BYTES){
+      showToast('Resume file is larger than 5 MB — please upload a smaller file');
+      return;
+    }
+  }else if(!GDOC_URL_PATTERN.test(googleDocUrl)){
+    showToast('That doesn’t look like a Google Doc link (should start with docs.google.com/document/d/…)');
     return;
   }
 
@@ -1062,9 +1091,12 @@ async function submitResume(){
   if(note) note.textContent = 'Uploading…';
 
   try{
-    const dataBase64 = await fileToBase64(file);
+    if(file){
+      fileName = file.name;
+      dataBase64 = await fileToBase64(file);
+    }
     const json = await contactApi('uploadResume', {
-      name, email, phone, status, confirmed, fileName: file.name, dataBase64
+      name, email, phone, status, confirmed, fileName, dataBase64, googleDocUrl: file ? '' : googleDocUrl
     });
     if(json.error) throw new Error(json.error);
 

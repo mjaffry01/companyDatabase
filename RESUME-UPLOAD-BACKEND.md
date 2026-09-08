@@ -2,8 +2,9 @@
 
 The frontend now has a third tab, "Resumes", where job seekers (recent graduates or
 people who have recently lost their job — not people looking to switch) upload a resume
-in `.doc`/`.docx`, `.pdf` or `.html`/`.htm` format, up to 5 MB. It is gated behind the same
-Google sign-in + admin approval as the rest of the app.
+in `.doc`/`.docx`, `.pdf` or `.html`/`.htm` format (up to 5 MB), or paste a link to a
+**Google Doc** instead of uploading a file. It is gated behind the same Google sign-in +
+admin approval as the rest of the app.
 
 Like [ADDRESS-BACKEND.md](ADDRESS-BACKEND.md), the deployed Apps Script source is not in
 this repository, so adding the code to `apps-script/Code.gs` alone does not make the live
@@ -12,12 +13,19 @@ backend accept uploads.
 ## What was added to `apps-script/Code.gs`
 
 - `RESUME_FOLDER_NAME`, `RESUME_MAX_BYTES`, `RESUME_ALLOWED_EXTENSIONS` constants.
-- `uploadResume(submitterEmail, data)` — validates name/email/status/declaration, checks
-  the file extension against the allow-list, decodes the base64 payload, enforces the
-  5 MB cap, then saves the file into a Drive folder named **"Professional Resumes Raw
-  Data"** (created on first use via `getOrCreateResumeFolder()`) and logs a row (name,
-  email, phone, status, file name, Drive link, submitter, timestamp) to a **"Resumes"**
-  sheet tab (auto-created).
+- `uploadResume(submitterEmail, data)` — validates name/email/status/declaration, then
+  branches on which of two inputs was sent:
+  - **File upload**: checks the file extension against the allow-list, decodes the
+    base64 payload, enforces the 5 MB cap, and saves it into the Drive folder.
+  - **Google Doc link** (`data.googleDocUrl`): extracts the doc ID via
+    `extractGoogleDocId()`, opens it with `DriveApp.getFileById()`, and uses
+    `file.makeCopy()` to copy it (as a native Google Doc) into the same Drive folder —
+    the submitter's doc must have sharing set to "Anyone with the link" (or otherwise be
+    accessible to the account the script runs as) or this throws a friendly error.
+  Either way the file lands in a Drive folder named **"Professional Resumes Raw Data"**
+  (created on first use via `getOrCreateResumeFolder()`) and a row (name, email, phone,
+  status, file name, Drive link, submitter, timestamp) is logged to a **"Resumes"** sheet
+  tab (auto-created).
 - A new `uploadResume` action wired into `doPost`, requiring the same
   `isApproved(email)` check as `companies`/`contacts`/`addContact`.
 
