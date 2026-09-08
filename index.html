@@ -9,6 +9,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Contact Book">
 <link rel="manifest" href="manifest.json">
+<link rel="stylesheet" href="opportunities.css">
 <link rel="apple-touch-icon" href="icons/icon-192.svg">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -265,6 +266,7 @@
         <button class="tab-btn active" id="tabAddBtn" onclick="switchTab('add')">Add a contact</button>
         <button class="tab-btn" id="tabLookupBtn" onclick="switchTab('lookup')">Search &amp; lookup</button>
         <button class="tab-btn" id="tabResumeBtn" onclick="switchTab('resume')">Resumes</button>
+        <button class="tab-btn" id="tabOpportunityBtn" onclick="switchTab('opportunity')">Opportunities</button>
         <button class="tab-btn refresh-btn" onclick="refreshContacts()" title="Refresh contacts" aria-label="Refresh contacts"><i class="fa-solid fa-rotate" aria-hidden="true"></i></button>
       </div>
 
@@ -359,6 +361,27 @@
           </div>
         </div>
       </div>
+      <section id="opportunityView" style="display:none;" aria-labelledby="opportunityTitle">
+        <div class="opportunity-heading">
+          <h2 id="opportunityTitle">Professional Opportunity</h2>
+          <p>Drop an opportunity here. Paste a message or image, or attach a document.</p>
+          <p class="opportunity-hint">Saved to Google Drive for future AI reading. AI analysis is not enabled yet. Your latest 100 submissions appear here, visible only to you; the Drive owner can access the originals.</p>
+          <button class="btn btn-ghost" id="opportunityReload" onclick="loadOpportunities()">Refresh history</button>
+        </div>
+        <div id="opportunityMessages" role="log" aria-label="Your opportunities" aria-live="polite"></div>
+        <form id="opportunityComposer" class="opportunity-composer">
+          <fieldset id="opportunityFields">
+            <label for="opportunityText">Share an opportunity</label>
+            <textarea id="opportunityText" rows="4" maxlength="20000" placeholder="Paste the job, referral, internship, or other opportunity here..."></textarea>
+            <div id="opportunityAttachments" aria-label="Attachments"></div>
+            <label for="opportunityFiles">Attach Word, Excel, PDF, JPG or PNG files</label>
+            <input id="opportunityFiles" type="file" multiple accept=".doc,.docx,.xls,.xlsx,.pdf,.jpg,.jpeg,.png">
+            <p class="opportunity-hint">Up to 5 files, 5 MB total. You can also paste an image into the message. Ctrl/Cmd + Enter to send.</p>
+            <button class="btn btn-primary" type="submit">Send opportunity <i class="fa-solid fa-arrow-up" aria-hidden="true"></i></button>
+          </fieldset>
+          <p id="opportunityStatus" role="status"></p>
+        </form>
+      </section>
     </div>
   </div>
 </div>
@@ -444,6 +467,7 @@ async function contactApi(action, data){
 }
 
 window.clearContactSession = function(){
+  resetOpportunitySession();
   companies = []; ledger = {}; openCompany = null; pendingEditRequest = null;
   document.getElementById('ledgerRoot').hidden = true;
   document.getElementById('editRequestDialog').close();
@@ -527,6 +551,9 @@ function updateKicker(){
 
 
 function switchTab(tab){
+  document.getElementById('tabOpportunityBtn').classList.toggle('active', tab === 'opportunity');
+  document.getElementById('opportunityView').style.display = tab === 'opportunity' ? 'block' : 'none';
+  if(tab === 'opportunity') loadOpportunities();
   currentTab = tab;
   document.getElementById('tabAddBtn').classList.toggle('active', tab === 'add');
   document.getElementById('tabLookupBtn').classList.toggle('active', tab === 'lookup');
@@ -1118,5 +1145,6 @@ document.getElementById('searchInputAdd').addEventListener('input', renderAdd);
 document.getElementById('searchInputLookup').addEventListener('input', renderLookup);
 if('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
 </script>
+<script src="opportunities.js"></script>
 </body>
 </html>

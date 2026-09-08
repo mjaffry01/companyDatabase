@@ -72,6 +72,8 @@ function doPost(e){
     if(action === 'contacts') return json({ contacts: getContacts() });
     if(action === 'addContact') return json(addContact(email, body));
     if(action === 'uploadResume') return json(uploadResume(email, body));
+    if(action === 'opportunities') return json({ opportunities: getOpportunities(email) });
+    if(action === 'saveOpportunity') return json(saveOpportunity(email, body));
     throw new Error('Unknown action.');
   }catch(error){
     return json({ error: (error && error.message) || String(error) });
@@ -354,4 +356,83 @@ function uploadResume(submitterEmail, data){
   }finally{
     lock.releaseLock();
   }
+}
+
+// ---- Professional Opportunity inbox ----
+const OPPORTUNITY_FOLDER_NAME = 'Professional Opportunity';
+const OPPORTUNITY_SHEET = 'Opportunities';
+const OPPORTUNITY_TYPES = {
+  doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  xls: 'application/vnd.ms-excel', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png'
+};
+
+function getOpportunities(email){
+  const sheet = ss().getSheetByName(OPPORTUNITY_SHEET);
+  if(!sheet) return [];
+  return sheet.getDataRange().getValues().slice(1)
+    .filter(row => String(row[1]).toLowerCase() === email.toLowerCase())
+    .slice(-100).map(row => JSON.parse(row[2]));
+}
+
+// Can also be run once in the standalone editor to create the folder before use.
+function setupProfessionalOpportunity(){
+  const props = PropertiesService.getScriptProperties();
+  const existingId = props.getProperty('OPPORTUNITY_FOLDER_ID');
+  if(existingId){
+    const folder = DriveApp.getFolderById(existingId);
+    if(folder.isTrashed()) throw new Error('Restore the Professional Opportunity folder from Drive trash.');
+    return folder;
+  }
+  const folders = DriveApp.getFoldersByName(OPPORTUNITY_FOLDER_NAME);
+  const folder = folders.hasNext() ? folders.next() : DriveApp.createFolder(OPPORTUNITY_FOLDER_NAME);
+  props.setProperty('OPPORTUNITY_FOLDER_ID', folder.getId());
+  return folder;
+}
+
+function saveOpportunity(email, data){
+  const requestId = String(data.requestId || '');
+  if(!/^[a-zA-Z0-9-]{20,80}$/.test(requestId)) throw new Error('Invalid submission ID.');
+  const text = typeof data.text === 'string' ? data.text.trim() : '';
+  if(text.length > 20000) throw new Error('Keep the message under 20,000 characters.');
+  if(!Array.isArray(data.files) || data.files.length > 5) throw new Error('Attach up to 5 files.');
+  if(!text && !data.files.length) throw new Error('Add text or an attachment.');
+  let total = 0;
+  const attachments = data.files.map(file => {
+    if(!file || typeof file.name !== 'string' || !file.name || file.name.length > 200) throw new Error('Invalid file name.');
+    const extension = getFileExtension(file.name);
+    if(!Object.prototype.hasOwnProperty.call(OPPORTUNITY_TYPES, extension)) throw new Error('Choose Word, Excel, PDF, JPG or PNG files.');
+    if(typeof file.dataBase64 !== 'string' || file.dataBase64.length > 6990508) throw new Error('Attachments must total 5 MB or less.');
+    let bytes;
+    try{ bytes = Utilities.base64Decode(file.dataBase64); }catch(error){ throw new Error('Could not read the attachment.'); }
+    total += bytes.length;
+    if(!bytes.length || total > 5 * 1024 * 1024) throw new Error('Files must be nonempty and total 5 MB or less.');
+    return {name:file.name, bytes:bytes, mimeType:OPPORTUNITY_TYPES[extension]};
+  });
+  const lock = LockService.getScriptLock(); lock.waitLock(15000);
+  try{
+    let sheet = ss().getSheetByName(OPPORTUNITY_SHEET);
+    if(!sheet){ sheet = ss().insertSheet(OPPORTUNITY_SHEET); sheet.appendRow(['Submission ID', 'Submitted by', 'Record JSON']); }
+    const previous = sheet.getDataRange().getValues().slice(1).find(row => row[0] === requestId && String(row[1]).toLowerCase() === email.toLowerCase());
+    if(previous) return {ok:true, opportunity:JSON.parse(previous[2])};
+    const folder = setupProfessionalOpportunity();
+    const created = [];
+    const record = {id:requestId, createdAt:new Date().toISOString(), text:text, files:[]};
+    try{
+      attachments.forEach((attachment, index) => {
+        const safeName = attachment.name.replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').slice(0,150);
+        const file = folder.createFile(Utilities.newBlob(attachment.bytes, attachment.mimeType, requestId + '_' + index + '_' + safeName));
+        created.push(file);
+        record.files.push({name:attachment.name, id:file.getId(), url:file.getUrl(), mimeType:attachment.mimeType});
+      });
+      if(text) created.push(folder.createFile(Utilities.newBlob(text, 'text/plain', requestId + '_message.txt')));
+      // Preserve raw input and attribution for future AI processing, without interpreting it.
+      created.push(folder.createFile(Utilities.newBlob(JSON.stringify({...record, submittedBy:email}), 'application/json', requestId + '_metadata.json')));
+      sheet.appendRow([requestId, email, JSON.stringify(record)]);
+    }catch(error){
+      created.forEach(file => { try{ file.setTrashed(true); }catch(cleanupError){ console.error(cleanupError); } });
+      throw error;
+    }
+    return {ok:true, opportunity:record};
+  }finally{ lock.releaseLock(); }
 }

@@ -98,6 +98,12 @@ this project's history (see git log):
 
 ## Current feature set (as of this writing)
 
+- **Opportunities** tab: chat-style submission of text, Word, Excel, PDF and
+  JPG/PNG images, including clipboard images. Stores originals and metadata in
+  **Professional Opportunity** on Drive, with each member's latest 100 submissions
+  shown in their own history. AI processing is deferred. See
+  `OPPORTUNITY-BACKEND.md` for the required separate backend deployment.
+
 - **Add a contact** tab: for people currently employed somewhere to share a contact
   there for referrals.
 - **Search & lookup** tab: browse companies and existing contacts.
