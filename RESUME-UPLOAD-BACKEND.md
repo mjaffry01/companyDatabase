@@ -29,6 +29,15 @@ backend accept uploads.
 - A new `uploadResume` action wired into `doPost`, requiring the same
   `isApproved(email)` check as `companies`/`contacts`/`addContact`.
 
+## `appsscript.json`
+
+Added an explicit `oauthScopes` list (Drive, Sheets, external requests) so the project's
+authorized scope is never narrower than `https://www.googleapis.com/auth/drive.file` —
+without it, Apps Script may auto-detect a narrower Drive scope that can create files fine
+but can't open a pre-existing file (like a job seeker's Google Doc) by ID. To use this
+file, enable **Project Settings → Show "appsscript.json" manifest file in editor** in the
+Apps Script project, then paste its contents in alongside `Code.gs`.
+
 ## Deploy steps
 
 1. Open the deployed Apps Script project (**not** `Extensions → Apps Script` from inside

@@ -308,7 +308,7 @@ function uploadResume(submitterEmail, data){
     if(googleDocUrl){
       const docId = extractGoogleDocId(googleDocUrl);
       if(!docId){
-        throw new Error('That doesn\'t look like a Google Doc link (should start with docs.google.com/document/d/…).');
+        throw new Error('That doesn\'t look like a Google Doc link (should start with docs.google.com/document/d/...).');
       }
       let source;
       try{
