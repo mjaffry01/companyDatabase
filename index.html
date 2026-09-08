@@ -289,7 +289,7 @@
             <span id="totalContactsLabel">0 people saved</span>
           </div>
           <table class="book">
-            <thead><tr><th>Company</th><th>Contact name</th><th>Phone</th><th>Email</th></tr></thead>
+            <thead><tr><th>Company</th><th>Contact name</th><th>Contact</th></tr></thead>
             <tbody id="bookBody"></tbody>
           </table>
         </div>
@@ -518,6 +518,7 @@ function contactActions(person, company){
   return `
     <div class="contact-actions">
       <a href="tel:${escapeHtml(phone)}" title="Call ${escapeHtml(name)}" aria-label="Call ${escapeHtml(name)}"><i class="fa-solid fa-phone" aria-hidden="true"></i></a>
+      ${emailLink(person.email)}
       ${digits ? `<a href="https://wa.me/${digits}" target="_blank" rel="noopener" title="WhatsApp ${escapeHtml(name)}" aria-label="WhatsApp ${escapeHtml(name)}"><i class="fa-brands fa-whatsapp" aria-hidden="true"></i></a>` : ''}
       ${digits ? `<a href="sms:${escapeHtml(phone)}" title="Text ${escapeHtml(name)}" aria-label="Text ${escapeHtml(name)}"><i class="fa-solid fa-comment-sms" aria-hidden="true"></i></a>` : ''}
       <a href="${linkedInSearchUrl(name, company)}" target="_blank" rel="noopener" title="Find ${escapeHtml(name)} on LinkedIn" aria-label="Find ${escapeHtml(name)} on LinkedIn"><i class="fa-brands fa-linkedin" aria-hidden="true"></i></a>
@@ -526,7 +527,7 @@ function contactActions(person, company){
 }
 function emailLink(email){
   const value = String(email || '').trim();
-  return `<a href="mailto:${encodeURIComponent(value)}">${escapeHtml(value)}</a>`;
+  return value ? `<a href="mailto:${encodeURIComponent(value)}" title="Send email" aria-label="Send email"><i class="fa-solid fa-envelope" aria-hidden="true"></i></a>` : '';
 }
 
 let pendingEditRequest = null;
@@ -765,7 +766,6 @@ function renderPanel(companyName){
           <div class="contact-chip">
               <div>
                 <div class="who">${escapeHtml(p.name)}</div>
-                <div class="meta"><a href="tel:${escapeHtml(p.phone)}">${escapeHtml(p.phone)}</a> · ${emailLink(p.email)}</div>
                 ${contactActions(p, companyName)}
               </div>
           </div>
@@ -897,15 +897,14 @@ function renderBook(){
     `${rows.length} ${rows.length === 1 ? 'person' : 'people'} saved across ${Object.keys(ledger).length} ${Object.keys(ledger).length === 1 ? 'company' : 'companies'}`;
 
   if(rows.length === 0){
-    body.innerHTML = `<tr><td colspan="4" class="book-empty">No contacts saved yet — search a company above and hit Add.</td></tr>`;
+    body.innerHTML = `<tr><td colspan="3" class="book-empty">No contacts saved yet — search a company above and hit Add.</td></tr>`;
     return;
   }
   body.innerHTML = rows.map(({company, p}) => `
     <tr>
       <td class="company-cell" data-label="Company">${escapeHtml(company)}</td>
       <td data-label="Name">${escapeHtml(p.name)}</td>
-      <td class="mono" data-label="Phone"><a href="tel:${escapeHtml(p.phone)}">${escapeHtml(p.phone)}</a>${contactActions(p, company)}</td>
-      <td class="mono" data-label="Email">${emailLink(p.email)}</td>
+      <td data-label="Contact">${contactActions(p, company)}</td>
     </tr>
   `).join('');
 }
@@ -960,7 +959,6 @@ function renderLookupBlock(c){
               <div class="person-card">
                 <div>
                   <div class="who">${escapeHtml(p.name)}</div>
-                  <div class="meta">${escapeHtml(p.phone)} · <a href="mailto:${escapeHtml(p.email)}">${escapeHtml(p.email)}</a></div>
                   ${contactActions(p, c.n)}
                 </div>
               </div>
