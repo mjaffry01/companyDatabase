@@ -264,10 +264,15 @@
       <div class="tabs">
         <button class="tab-btn active" id="tabAddBtn" onclick="switchTab('add')">Add a contact</button>
         <button class="tab-btn" id="tabLookupBtn" onclick="switchTab('lookup')">Search &amp; lookup</button>
+        <button class="tab-btn" id="tabResumeBtn" onclick="switchTab('resume')">Resumes</button>
         <button class="tab-btn refresh-btn" onclick="refreshContacts()" title="Refresh contacts" aria-label="Refresh contacts"><i class="fa-solid fa-rotate" aria-hidden="true"></i></button>
       </div>
 
       <div id="addView">
+        <div class="declaration" style="margin:20px 26px 0;">
+          <h3><i class="fa-solid fa-handshake" aria-hidden="true"></i> Refer someone in need</h3>
+          <p>This tab is for people <em>currently working at a company</em> who are willing to share a contact there — themselves or a colleague — so the community can reach out for referrals. If you're job-hunting yourself, use <em>Search &amp; lookup</em> to find contacts, or the <em>Resumes</em> tab to leave your resume for others to refer.</p>
+        </div>
         <div class="search-bar">
             <label for="searchInputAdd">Search for your company. If you don't find it, you can add it.</label>
           <div class="search-input-row">
@@ -297,6 +302,57 @@
           <div class="search-meta" id="searchMetaLookup"></div>
         </div>
         <div class="results" id="resultsLookup"></div>
+      </div>
+
+      <div id="resumeView" style="display:none;">
+        <div class="add-custom">
+          <div class="declaration">
+            <h3><i class="fa-solid fa-file-lines" aria-hidden="true"></i> Resume drop for job seekers</h3>
+            <p>This tab is for people who have <em>recently graduated</em> or <em>recently lost a job</em> and want their resume kept on file for referrals. It is <em>not</em> for people currently employed and looking to switch — that flow is planned for a future release.</p>
+            <p>Accepted formats: <em>.doc / .docx</em>, <em>.pdf</em> and <em>.html / .htm</em>, up to 5&nbsp;MB. Your resume is saved to a private Google Drive folder for the community's referral use.</p>
+          </div>
+          <div class="add-form" id="resumeFormWrap">
+            <div class="field-row">
+              <div class="field">
+                <label for="r-name">Your name</label>
+                <input type="text" id="r-name" placeholder="Full name" maxlength="150">
+              </div>
+              <div class="field">
+                <label for="r-phone">Phone number (optional)</label>
+                <input type="tel" id="r-phone" placeholder="+91 …">
+              </div>
+            </div>
+            <div class="field">
+              <label for="r-email">Email address</label>
+              <input type="email" id="r-email" placeholder="name@example.com" maxlength="254">
+            </div>
+            <div class="field">
+              <label for="r-status">Your situation</label>
+              <select id="r-status" style="width:100%;padding:9px 10px;border:1px solid var(--paper-line);border-radius:6px;font-size:14px;font-family:'IBM Plex Sans', sans-serif;background:#fff;">
+                <option value="">Select one…</option>
+                <option value="Recent graduate">Recently graduated / passed out of college</option>
+                <option value="Recently lost job">Recently lost my job</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="r-file">Resume file (.doc, .docx, .pdf, .html, .htm — max 5 MB)</label>
+              <input type="file" id="r-file" accept=".doc,.docx,.pdf,.html,.htm">
+            </div>
+            <label class="confirm-row">
+              <input type="checkbox" id="r-confirm">
+              <span>I confirm this is my own resume and information, and I consent to it being stored and shared with the community for referral purposes.</span>
+            </label>
+            <div class="form-actions">
+              <span class="form-note" id="resumeFormNote"></span>
+              <button class="btn btn-primary icon-btn" id="resumeSaveBtn" onclick="submitResume()" title="Upload resume" aria-label="Upload resume"><i class="fa-solid fa-upload" aria-hidden="true"></i></button>
+            </div>
+          </div>
+          <div class="declaration" id="resumeThanksPanel" hidden>
+            <h3><i class="fa-solid fa-circle-check" aria-hidden="true"></i> Thank you — the upload has happened</h3>
+            <p>Your resume has been saved. Someone from the community may reach out if a matching opportunity comes up.</p>
+            <div class="form-actions"><button class="btn btn-ghost icon-btn" onclick="resetResumeForm()" title="Upload another resume" aria-label="Upload another resume"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i></button></div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -389,6 +445,7 @@ window.clearContactSession = function(){
   document.getElementById('editRequestForm').reset();
   for(const id of ['resultsAdd','resultsLookup','bookBody']) document.getElementById(id).replaceChildren();
   document.getElementById('kickerLine').textContent = 'Members contact book';
+  resetResumeForm();
 };
 
 async function connect(){
@@ -468,8 +525,10 @@ function switchTab(tab){
   currentTab = tab;
   document.getElementById('tabAddBtn').classList.toggle('active', tab === 'add');
   document.getElementById('tabLookupBtn').classList.toggle('active', tab === 'lookup');
+  document.getElementById('tabResumeBtn').classList.toggle('active', tab === 'resume');
   document.getElementById('addView').style.display = tab === 'add' ? 'block' : 'none';
   document.getElementById('lookupView').style.display = tab === 'lookup' ? 'block' : 'none';
+  document.getElementById('resumeView').style.display = tab === 'resume' ? 'block' : 'none';
   if(tab === 'lookup') renderLookup();
 }
 
@@ -934,6 +993,93 @@ function renderLookupBlock(c){
         ` : `<div class="no-people">No contacts logged for this company yet.</div>`}
       </div>
     </div>`;
+}
+
+/* ---------- RESUMES TAB ---------- */
+
+const RESUME_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+const RESUME_ALLOWED_EXTENSIONS = ['doc', 'docx', 'pdf', 'html', 'htm'];
+let resumeSaving = false;
+
+function fileExtension(fileName){
+  const match = /\.([a-zA-Z0-9]+)$/.exec(String(fileName || ''));
+  return match ? match[1].toLowerCase() : '';
+}
+
+function fileToBase64(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      const comma = result.indexOf(',');
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.onerror = () => reject(new Error('Could not read the file.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function resetResumeForm(){
+  document.getElementById('r-name').value = '';
+  document.getElementById('r-phone').value = '';
+  document.getElementById('r-email').value = '';
+  document.getElementById('r-status').value = '';
+  document.getElementById('r-file').value = '';
+  document.getElementById('r-confirm').checked = false;
+  document.getElementById('resumeFormNote').textContent = '';
+  document.getElementById('resumeFormWrap').hidden = false;
+  document.getElementById('resumeThanksPanel').hidden = true;
+}
+
+async function submitResume(){
+  if(resumeSaving) return;
+  const name = document.getElementById('r-name').value.trim();
+  const phone = document.getElementById('r-phone').value.trim();
+  const email = document.getElementById('r-email').value.trim();
+  const status = document.getElementById('r-status').value;
+  const fileInput = document.getElementById('r-file');
+  const confirmed = document.getElementById('r-confirm').checked;
+  const file = fileInput.files && fileInput.files[0];
+
+  if(!name || !email || !status){ showToast('Fill in your name, email and situation'); return; }
+  if(!file){ showToast('Choose a resume file to upload'); return; }
+  if(!confirmed){ showToast('Please confirm the declaration first'); return; }
+
+  const extension = fileExtension(file.name);
+  if(!RESUME_ALLOWED_EXTENSIONS.includes(extension)){
+    showToast('Only .doc, .docx, .pdf and .html/.htm resumes are accepted');
+    return;
+  }
+  if(file.size > RESUME_MAX_BYTES){
+    showToast('Resume file is larger than 5 MB — please upload a smaller file');
+    return;
+  }
+
+  resumeSaving = true;
+  const saveBtn = document.getElementById('resumeSaveBtn');
+  const note = document.getElementById('resumeFormNote');
+  if(saveBtn) saveBtn.disabled = true;
+  if(note) note.textContent = 'Uploading…';
+
+  try{
+    const dataBase64 = await fileToBase64(file);
+    const json = await contactApi('uploadResume', {
+      name, email, phone, status, confirmed, fileName: file.name, dataBase64
+    });
+    if(json.error) throw new Error(json.error);
+
+    resumeSaving = false;
+    if(saveBtn) saveBtn.disabled = false;
+    if(note) note.textContent = '';
+    document.getElementById('resumeFormWrap').hidden = true;
+    document.getElementById('resumeThanksPanel').hidden = false;
+    showToast('Thank you! The upload has happened.');
+  }catch(err){
+    resumeSaving = false;
+    if(saveBtn) saveBtn.disabled = false;
+    if(note) note.textContent = '';
+    showToast('Could not upload: ' + err.message);
+  }
 }
 
 document.getElementById('searchInputAdd').addEventListener('input', renderAdd);
