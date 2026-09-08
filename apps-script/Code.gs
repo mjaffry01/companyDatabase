@@ -38,6 +38,10 @@ const SPREADSHEET_ID = '1cgJ8wGEPkQW8QbrBuCqa9Z1Pcq62yma2R3N9YKoMSnk';
 const COMPANY_SHEET = 'Company Directory';
 const CONTACTS_SHEET = 'ShiaContacts';
 const MEMBERS_SHEET = 'Members';
+const RESUMES_SHEET = 'Resumes';
+const RESUME_FOLDER_NAME = 'Professional Resumes Raw Data';
+const RESUME_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
+const RESUME_ALLOWED_EXTENSIONS = { pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', html: 'text/html', htm: 'text/html' };
 const COMPANY_HEADERS = { n: 'Company Name', s: 'Company Type', t: 'Size', a: 'Hyderabad Office Address' };
 
 function ss(){ return SpreadsheetApp.openById(SPREADSHEET_ID); }
@@ -67,6 +71,7 @@ function doPost(e){
     if(action === 'companies') return json({ companies: getCompanies() });
     if(action === 'contacts') return json({ contacts: getContacts() });
     if(action === 'addContact') return json(addContact(email, body));
+    if(action === 'uploadResume') return json(uploadResume(email, body));
     throw new Error('Unknown action.');
   }catch(error){
     return json({ error: (error && error.message) || String(error) });
@@ -237,6 +242,82 @@ function addContact(ownerEmail, data){
       }
     }
     sheet.appendRow([company, name, phone, email, new Date(), address, ownerEmail, Utilities.getUuid()]);
+    return { ok: true };
+  }finally{
+    lock.releaseLock();
+  }
+}
+
+// ---- Resume uploads ----
+function getOrCreateResumeFolder(){
+  const folders = DriveApp.getFoldersByName(RESUME_FOLDER_NAME);
+  if(folders.hasNext()) return folders.next();
+  return DriveApp.createFolder(RESUME_FOLDER_NAME);
+}
+
+const RESUMES_HEADER = ['Timestamp', 'Candidate name', 'Candidate email', 'Phone', 'Status', 'File name', 'Drive link', 'Submitted by'];
+
+function ensureResumesHeader(sheet){
+  const first = sheet.getRange(1, 1, 1, 2).getValues()[0];
+  if(first[0] === 'Timestamp' && first[1] === 'Candidate name') return;
+  sheet.insertRowBefore(1);
+  sheet.getRange(1, 1, 1, RESUMES_HEADER.length).setValues([RESUMES_HEADER]);
+}
+
+function logResumeUpload(row){
+  let sheet = ss().getSheetByName(RESUMES_SHEET);
+  if(!sheet) sheet = ss().insertSheet(RESUMES_SHEET);
+  ensureResumesHeader(sheet);
+  sheet.appendRow(row);
+}
+
+function getFileExtension(fileName){
+  const match = /\.([a-zA-Z0-9]+)$/.exec(String(fileName || ''));
+  return match ? match[1].toLowerCase() : '';
+}
+
+function uploadResume(submitterEmail, data){
+  const name = clampText(data.name, 150);
+  const email = clampText(data.email, 254);
+  const phone = clampText(data.phone, 40);
+  const status = clampText(data.status, 60);
+  const fileName = clampText(data.fileName, 200);
+  const dataBase64 = String(data.dataBase64 || '');
+
+  if(!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !status || data.confirmed !== true){
+    throw new Error('Complete your name, email, status and declaration.');
+  }
+  if(!fileName || !dataBase64){
+    throw new Error('Choose a resume file to upload.');
+  }
+  const extension = getFileExtension(fileName);
+  const mimeType = RESUME_ALLOWED_EXTENSIONS[extension];
+  if(!mimeType){
+    throw new Error('Only .doc, .docx, .pdf and .html/.htm resumes are accepted.');
+  }
+
+  let bytes;
+  try{
+    bytes = Utilities.base64Decode(dataBase64);
+  }catch(err){
+    throw new Error('The uploaded file could not be read. Please try again.');
+  }
+  if(bytes.length < 1){
+    throw new Error('The uploaded file is empty.');
+  }
+  if(bytes.length > RESUME_MAX_BYTES){
+    throw new Error('Resume file is larger than 5 MB. Please upload a smaller file.');
+  }
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try{
+    const folder = getOrCreateResumeFolder();
+    const safeBase = fileName.replace(/[\\/:*?"<>|]/g, '_').slice(0, 150);
+    const storedName = Utilities.formatDate(new Date(), Session.getScriptTimeZone() || 'Etc/UTC', 'yyyy-MM-dd_HHmmss') + '_' + safeBase;
+    const blob = Utilities.newBlob(bytes, mimeType, storedName);
+    const file = folder.createFile(blob);
+    logResumeUpload([new Date(), name, email, phone, status, fileName, file.getUrl(), submitterEmail]);
     return { ok: true };
   }finally{
     lock.releaseLock();
