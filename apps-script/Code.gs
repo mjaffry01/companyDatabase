@@ -8,6 +8,9 @@
  *    *existing* bound script, which is the old public backend and must stay
  *    untouched until this new one is confirmed working.
  * 2. Paste this whole file in as Code.gs (replacing the default content).
+ *    Also add apps-script/ResumeAnalysis.gs as a second script file in the
+ *    same standalone project (File -> New -> Script). Resume analysis on
+ *    upload needs both files. Uploads still succeed if analysis is missing.
  * 3. Fill in CLIENT_ID below with your OAuth Client ID
  *    (from https://console.cloud.google.com/apis/credentials).
  * 4. Deploy -> New deployment -> Web app.
@@ -62,7 +65,11 @@ function doPost(e){
     const action = body.action;
 
     if(action === 'membership'){
-      return json({ approved: checkMembership(email, payload.sub) });
+      const approved = checkMembership(email, payload.sub);
+      if(!approved || body.includeBootstrap !== true) return json({approved:approved});
+      const contacts = getContacts();
+      return json({approved:true, companies:getCompanies(), contacts:contacts,
+        profile:getOpportunityProfile(email, contacts, payload.name)});
     }
 
     if(!isApproved(email)){
@@ -71,7 +78,11 @@ function doPost(e){
     if(action === 'companies') return json({ companies: getCompanies() });
     if(action === 'contacts') return json({ contacts: getContacts() });
     if(action === 'addContact') return json(addContact(email, body));
-    if(action === 'uploadResume') return json(uploadResume(email, body));
+    if(action === 'uploadResume'){
+      return json(typeof uploadResumeAndAnalyze === 'function'
+        ? uploadResumeAndAnalyze(email, body)
+        : uploadResume(email, body));
+    }
     if(action === 'opportunityProfile') return json({ profile: getOpportunityProfile(email) });
     if(action === 'profile') return json({ profile: getUserProfile(email, payload.name) });
     if(action === 'saveWorkStatus') return json(saveWorkStatus(email, body.workStatus, payload.name));
@@ -355,7 +366,7 @@ function uploadResume(submitterEmail, data){
     }
 
     logResumeUpload([new Date(), name, email, phone, status, loggedFileName, driveUrl, submitterEmail]);
-    return { ok: true };
+    return { ok: true, driveUrl: driveUrl };
   }finally{
     lock.releaseLock();
   }
@@ -370,8 +381,8 @@ const OPPORTUNITY_TYPES = {
   pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png'
 };
 
-function getOpportunityProfile(email){
-  const contacts = getContacts();
+function getOpportunityProfile(email, existingContacts, googleName){
+  const contacts = existingContacts || getContacts();
   const matches = [];
   Object.keys(contacts).forEach(company => {
     contacts[company].forEach(person => {
@@ -382,7 +393,7 @@ function getOpportunityProfile(email){
     });
   });
   const homeCompanies = [...new Set(matches.map(person => person.company))];
-  return {name:matches.length ? matches[0].name : '', email:email, phone:[...new Set(matches.map(person => person.phone).filter(Boolean))].join(', '), homeCompanies:homeCompanies,
+  return {name:matches.length ? matches[0].name : clampText(googleName, 150), email:email, phone:[...new Set(matches.map(person => person.phone).filter(Boolean))].join(', '), homeCompanies:homeCompanies,
     companies:homeCompanies.slice(), canPost:matches.length > 0};
 }
 

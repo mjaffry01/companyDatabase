@@ -1,4 +1,4 @@
-const CACHE_NAME = 'company-contact-book-v6-user-profile';
+const CACHE_NAME = 'company-contact-book-v8-faster-login';
 const APP_SHELL = ['./', './index.html', './manifest.json', './opportunities.js', './opportunities.css', './profile.js'];
 
 self.addEventListener('install', event => {
