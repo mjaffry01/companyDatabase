@@ -37,6 +37,7 @@ async function checkAccess(){
     }
     authStatusEl().textContent = 'Loading your contacts…';
     await window.init();
+    await loadOpportunityProfile();
   }catch(error){
     authStatusEl().textContent = error.message || 'Could not check access. Try again.';
   }finally{
@@ -53,6 +54,22 @@ function logout(){
 }
 
 function initGoogleSignIn(){
+  const protocol = window.location.protocol;
+  const localHost = ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname);
+  if(protocol !== 'https:' && !(protocol === 'http:' && localHost)){
+    const signIn = document.getElementById('googleSignInDiv');
+    signIn.replaceChildren();
+    signIn.hidden = false;
+    authStatusEl().textContent = protocol === 'file:'
+      ? 'Google sign-in cannot run from a file opened on your computer. Open the online Contact Book to sign in.'
+      : 'Google sign-in needs a secure website address. Open the online Contact Book to sign in.';
+    const link = document.createElement('a');
+    link.href = 'https://mjaffry01.github.io/companyDatabase/';
+    link.textContent = 'Open online Contact Book';
+    link.className = 'btn btn-primary';
+    signIn.append(link);
+    return;
+  }
   if(!window.GOOGLE_CLIENT_ID || window.GOOGLE_CLIENT_ID.indexOf('PASTE_') === 0){
     authStatusEl().textContent = 'Google sign-in is being set up. Contact access is temporarily unavailable.';
     return;

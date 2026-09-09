@@ -260,6 +260,7 @@
     <button class="btn btn-ghost" id="logoutBtn" onclick="logout()" hidden>Sign out</button>
   </section>
   <div class="ledger" id="ledgerRoot" hidden>
+    <div class="profile-toolbar"><button class="btn btn-ghost" id="profileButton" onclick="openUserProfile()" aria-haspopup="dialog" aria-controls="profileDialog"><i class="fa-solid fa-circle-user" aria-hidden="true"></i> My profile</button></div>
 
     <div id="mainPane">
       <div class="tabs">
@@ -364,13 +365,18 @@
       <section id="opportunityView" style="display:none;" aria-labelledby="opportunityTitle">
         <div class="opportunity-heading">
           <h2 id="opportunityTitle">Professional Opportunity</h2>
+          <p id="opportunityIdentity" role="status">Checking your contact profile...</p>
           <p>Drop an opportunity here. Paste a message or image, or attach a document.</p>
           <p class="opportunity-hint">Saved to Google Drive for future AI reading. AI analysis is not enabled yet. Your latest 100 submissions appear here, visible only to you; the Drive owner can access the originals.</p>
           <button class="btn btn-ghost" id="opportunityReload" onclick="loadOpportunities()">Refresh history</button>
         </div>
         <div id="opportunityMessages" role="log" aria-label="Your opportunities" aria-live="polite"></div>
         <form id="opportunityComposer" class="opportunity-composer">
-          <fieldset id="opportunityFields">
+          <fieldset id="opportunityFields" disabled>
+            <label for="opportunityCompany">Opportunity company</label>
+            <input id="opportunityCompany" list="opportunityCompanyOptions" maxlength="200" required placeholder="Select or type a company">
+            <datalist id="opportunityCompanyOptions"></datalist>
+            <p class="opportunity-hint">You can post for your own company or refer for another company.</p>
             <label for="opportunityText">Share an opportunity</label>
             <textarea id="opportunityText" rows="4" maxlength="20000" placeholder="Paste the job, referral, internship, or other opportunity here..."></textarea>
             <div id="opportunityAttachments" aria-label="Attachments"></div>
@@ -387,6 +393,25 @@
 </div>
 
 <div class="toast" id="toast"></div>
+<dialog id="profileDialog" aria-labelledby="profileTitle">
+  <div class="profile-title"><h2 id="profileTitle">My profile</h2><button class="btn btn-ghost" onclick="document.getElementById('profileDialog').close()" aria-label="Close profile">Close</button></div>
+  <p id="profileMessage" role="status"></p>
+  <dl id="profileDetails" hidden>
+    <dt>Name</dt><dd id="profileName"></dd>
+    <dt>Company listed in contacts</dt><dd id="profileCompany"></dd>
+    <dt>Sign-in email</dt><dd id="profileEmail"></dd>
+    <dt>Phone</dt><dd id="profilePhone"></dd>
+    <dt>Work status</dt><dd id="profileWorkStatus"></dd>
+  </dl>
+  <form id="profileStatusForm" hidden>
+    <label for="profileStatusSelect">Are you currently working?</label>
+    <select id="profileStatusSelect" required><option value="">Select your work status</option><option>Working</option><option>Not working</option></select>
+    <button class="btn btn-primary" id="profileSaveButton" type="submit">Save work status</button>
+    <p class="opportunity-hint">Your company and phone come from your contact record. Work status is provided by you.</p>
+  </form>
+  <button class="btn btn-ghost" onclick="openUserProfile()">Refresh profile</button>
+  <button class="btn btn-ghost" onclick="logout()">Sign out</button>
+</dialog>
 <dialog id="editRequestDialog" aria-labelledby="requestTitle" style="width:min(94vw,520px);max-height:90vh;overflow:auto;border:0;border-radius:14px;padding:20px;">
   <form class="add-form" id="editRequestForm">
     <h2 id="requestTitle">Request an update or deletion</h2>
@@ -467,6 +492,7 @@ async function contactApi(action, data){
 }
 
 window.clearContactSession = function(){
+  clearUserProfile();
   resetOpportunitySession();
   companies = []; ledger = {}; openCompany = null; pendingEditRequest = null;
   document.getElementById('ledgerRoot').hidden = true;
@@ -1146,5 +1172,6 @@ document.getElementById('searchInputLookup').addEventListener('input', renderLoo
 if('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
 </script>
 <script src="opportunities.js"></script>
+<script src="profile.js"></script>
 </body>
 </html>

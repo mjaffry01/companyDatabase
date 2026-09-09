@@ -1,5 +1,5 @@
-const CACHE_NAME = 'company-contact-book-v4-opportunities';
-const APP_SHELL = ['./', './index.html', './manifest.json', './opportunities.js', './opportunities.css'];
+const CACHE_NAME = 'company-contact-book-v6-user-profile';
+const APP_SHELL = ['./', './index.html', './manifest.json', './opportunities.js', './opportunities.css', './profile.js'];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE_NAME).then(cache => cache.addAll(APP_SHELL)));

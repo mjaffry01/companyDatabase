@@ -72,7 +72,10 @@ function doPost(e){
     if(action === 'contacts') return json({ contacts: getContacts() });
     if(action === 'addContact') return json(addContact(email, body));
     if(action === 'uploadResume') return json(uploadResume(email, body));
-    if(action === 'opportunities') return json({ opportunities: getOpportunities(email) });
+    if(action === 'opportunityProfile') return json({ profile: getOpportunityProfile(email) });
+    if(action === 'profile') return json({ profile: getUserProfile(email, payload.name) });
+    if(action === 'saveWorkStatus') return json(saveWorkStatus(email, body.workStatus, payload.name));
+    if(action === 'opportunities') return json({ opportunities: getOpportunities(email), profile: getOpportunityProfile(email) });
     if(action === 'saveOpportunity') return json(saveOpportunity(email, body));
     throw new Error('Unknown action.');
   }catch(error){
@@ -367,6 +370,45 @@ const OPPORTUNITY_TYPES = {
   pdf: 'application/pdf', jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png'
 };
 
+function getOpportunityProfile(email){
+  const contacts = getContacts();
+  const matches = [];
+  Object.keys(contacts).forEach(company => {
+    contacts[company].forEach(person => {
+      // Match the contact's email, not the person who submitted a colleague's entry.
+      if(String(person.email).trim().toLowerCase() === email.trim().toLowerCase() && person.name.trim()){
+        matches.push({name:person.name, company:company, phone:person.phone});
+      }
+    });
+  });
+  const homeCompanies = [...new Set(matches.map(person => person.company))];
+  return {name:matches.length ? matches[0].name : '', email:email, phone:[...new Set(matches.map(person => person.phone).filter(Boolean))].join(', '), homeCompanies:homeCompanies,
+    companies:homeCompanies.slice(), canPost:matches.length > 0};
+}
+
+function getUserProfile(email, googleName){
+  const profile = getOpportunityProfile(email);
+  if(!profile.name) profile.name = clampText(googleName, 150);
+  const sheet = ss().getSheetByName('Profiles');
+  const row = sheet && sheet.getDataRange().getValues().slice(1).find(row => normalizeKey(row[0]) === normalizeKey(email));
+  profile.workStatus = row && ['Working', 'Not working'].includes(row[1]) ? row[1] : '';
+  return profile;
+}
+
+function saveWorkStatus(email, status, googleName){
+  if(!['Working', 'Not working'].includes(status)) throw new Error('Choose Working or Not working.');
+  const lock = LockService.getScriptLock(); lock.waitLock(15000);
+  try{
+    let sheet = ss().getSheetByName('Profiles');
+    if(!sheet){ sheet = ss().insertSheet('Profiles'); sheet.appendRow(['Email', 'Work status', 'Updated at']); }
+    const rows = sheet.getDataRange().getValues();
+    const index = rows.findIndex((row, i) => i > 0 && normalizeKey(row[0]) === normalizeKey(email));
+    if(index < 0) sheet.appendRow([email, status, new Date()]);
+    else sheet.getRange(index + 1, 2, 1, 2).setValues([[status, new Date()]]);
+  }finally{ lock.releaseLock(); }
+  return {ok:true, profile:getUserProfile(email, googleName)};
+}
+
 function getOpportunities(email){
   const sheet = ss().getSheetByName(OPPORTUNITY_SHEET);
   if(!sheet) return [];
@@ -391,6 +433,10 @@ function setupProfessionalOpportunity(){
 }
 
 function saveOpportunity(email, data){
+  const profile = getOpportunityProfile(email);
+  if(!profile.canPost) throw new Error('Your signed-in email must be listed as a contact before you can post opportunities.');
+  const company = typeof data.company === 'string' ? data.company.trim() : '';
+  if(!company || company.length > 200) throw new Error('Enter the opportunity company (up to 200 characters).');
   const requestId = String(data.requestId || '');
   if(!/^[a-zA-Z0-9-]{20,80}$/.test(requestId)) throw new Error('Invalid submission ID.');
   const text = typeof data.text === 'string' ? data.text.trim() : '';
@@ -417,7 +463,7 @@ function saveOpportunity(email, data){
     if(previous) return {ok:true, opportunity:JSON.parse(previous[2])};
     const folder = setupProfessionalOpportunity();
     const created = [];
-    const record = {id:requestId, createdAt:new Date().toISOString(), text:text, files:[]};
+    const record = {id:requestId, createdAt:new Date().toISOString(), text:text, files:[], postedBy:profile.name, homeCompanies:profile.homeCompanies, company:company};
     try{
       attachments.forEach((attachment, index) => {
         const safeName = attachment.name.replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').slice(0,150);

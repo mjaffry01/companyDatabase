@@ -13,9 +13,10 @@ function backend(){
     DriveApp:{getFoldersByName:()=>({hasNext:()=>false}),createFolder:()=>folder,getFolderById:()=>folder},
     Utilities:{base64Decode:value=>Array.from(Buffer.from(value,'base64')),newBlob:(data,type,name)=>({data,type,name})}});
   vm.runInContext(fs.readFileSync('apps-script/Code.gs','utf8'),context);
+  context.getContacts = () => ({Acme:[{name:'Alice',email:'one@example.com'}]});
   return {context, files, rows, failLog(){failLog=true;}};
 }
-const request = (extra={})=>({requestId:'12345678-1234-1234-1234-123456789012',text:'A role\nApply here',files:[],...extra});
+const request = (extra={})=>({requestId:'12345678-1234-1234-1234-123456789012',company:'Acme',text:'A role\nApply here',files:[],...extra});
 test('text saved with metadata, history isolated and retries deduplicated',()=>{
   const b=backend(); b.context.saveOpportunity('one@example.com',request());
   assert.equal(b.files.length,2);
@@ -24,6 +25,20 @@ test('text saved with metadata, history isolated and retries deduplicated',()=>{
   b.context.saveOpportunity('one@example.com',request());
   assert.equal(b.files.length,2); assert.equal(b.rows.length,2);
   assert.equal(b.files[0].blob.data,'A role\nApply here');
+});
+test('posting requires a matching contact email, not a supplied name',()=>{
+  const b=backend();
+  assert.throws(()=>b.context.saveOpportunity('outsider@example.com',request({postedBy:'Alice'})),/signed-in email/);
+  assert.equal(b.files.length,0);
+  assert.equal(b.context.getOpportunityProfile('ONE@example.com').name,'Alice');
+});
+test('a listed member can post for another company with server-derived identity',()=>{
+  const b=backend();
+  const result=b.context.saveOpportunity('one@example.com',request({company:'Other Company',postedBy:'Fake',homeCompanies:['Fake']}));
+  assert.equal(result.opportunity.company,'Other Company');
+  assert.equal(result.opportunity.postedBy,'Alice');
+  assert.deepEqual(Array.from(result.opportunity.homeCompanies),['Acme']);
+  assert.throws(()=>b.context.saveOpportunity('one@example.com',request({company:' '})),/company/);
 });
 test('all supported formats preserve original bytes and MIME types',()=>{
   for(const ext of ['doc','docx','xls','xlsx','pdf','jpg','jpeg','png']){

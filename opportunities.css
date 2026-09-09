@@ -12,6 +12,18 @@
 .opportunity-composer label{display:block;font-size:13px;margin:8px 0}
 .opportunity-composer textarea{width:100%;resize:vertical;min-height:100px;padding:12px;border:1px solid var(--paper-line);border-radius:10px;font:inherit;background:#fff}
 .opportunity-composer input{max-width:100%}
+#opportunityCompany{width:100%;padding:10px 12px;border:1px solid var(--paper-line);border-radius:8px;font:inherit;background:#fff}
+#opportunityIdentity{font-weight:600;color:var(--teal-dark)}
+.profile-toolbar{display:flex;justify-content:flex-end;padding:10px 18px;border-bottom:1px solid var(--paper-line)}
+.profile-toolbar i{font-size:22px;margin-right:6px}
+#profileDialog{width:min(94vw,480px);max-height:90vh;overflow:auto;border:1px solid var(--paper-line);border-radius:16px;padding:24px;background:var(--paper);color:var(--text)}
+#profileDialog::backdrop{background:#14181c99}
+.profile-title{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.profile-title h2{font-family:'Fraunces',serif;margin:0}
+#profileDetails dt{font-size:12px;color:var(--text-dim);margin-top:16px}
+#profileDetails dd{margin:4px 0 0;overflow-wrap:anywhere}
+#profileStatusForm{border-top:1px solid var(--paper-line);padding-top:16px;margin:20px 0}
+#profileStatusSelect{display:block;width:100%;margin:10px 0;padding:10px;font:inherit;border:1px solid var(--paper-line);border-radius:6px}
 .opportunity-composer button:disabled{opacity:.6}
 .opportunity-attachment{display:flex;align-items:center;gap:10px;margin:8px 0;overflow-wrap:anywhere}
 .opportunity-attachment img{width:64px;height:64px;object-fit:contain;border-radius:6px}

@@ -34,7 +34,9 @@ Blaze plan (a card on file) even for $0 actual usage. That code is kept for refe
 
 ### 2. Deploy the Apps Script backend (free, no billing)
 
-1. Open the "Jobfinder" spreadsheet → **Extensions → Apps Script**.
+1. Open the existing **standalone** project at script.google.com (or create a
+   standalone project for first-time setup). Do not use the spreadsheet's
+   **Extensions → Apps Script**: that opens the older bound backend.
 2. Delete the default `Code.gs` content and paste in the contents of
    [apps-script/Code.gs](apps-script/Code.gs) from this repo.
 3. At the top of the script, set `CLIENT_ID` to the OAuth Client ID from step 1.
@@ -95,3 +97,25 @@ tested and confirmed to no longer return data.
 - Confirm the old public Apps Script URL no longer returns contacts (see cutover above).
 
 Local syntax checks are not a substitute for these live checks.
+
+## Google popup: Error 400 invalid_request
+
+Click **error details** in the popup before changing configuration: this error
+has multiple possible causes. Record the detailed message and the address of
+the page that launched sign-in.
+
+- Open the deployed site at https://mjaffry01.github.io/companyDatabase/.
+  A downloaded index.html opened with a file:// address cannot host Google sign-in.
+- In Google Cloud, select the OAuth web client matching GOOGLE_CLIENT_ID in
+  auth-config.js. Its Authorized JavaScript origins must include
+  `https://mjaffry01.github.io` (no /companyDatabase/ path).
+- For local development, serve the files over localhost and register both
+  `http://localhost` and the exact origin with its port, such as
+  `http://localhost:8000`. Do not assume localhost is already registered.
+- If the details identify an unsupported embedded browser, open the deployed
+  site in a normal Chrome or Edge window.
+- Keep the frontend GOOGLE_CLIENT_ID and standalone backend CLIENT_ID identical.
+  Do not remove token verification or membership approval to work around login.
+
+Google's configuration reference:
+https://developers.google.com/identity/gsi/web/guides/get-google-api-clientid

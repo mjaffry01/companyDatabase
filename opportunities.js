@@ -1,5 +1,29 @@
 let opportunityFiles = [], opportunitySaving = false, opportunitySession = 0;
 let opportunityRequestId = null;
+let opportunityProfile = null;
+function applyOpportunityProfile(profile){
+  opportunityProfile = profile || null;
+  const identity = document.getElementById('opportunityIdentity');
+  identity.textContent = profile?.canPost
+    ? profile.name + ' · ' + profile.homeCompanies.join(', ')
+    : 'To post, add your own name and company in Add a contact using the email you signed in with, then refresh history.';
+  const select = document.getElementById('opportunityCompany');
+  const options = document.getElementById('opportunityCompanyOptions');
+  options.replaceChildren();
+  const companyNames = [...new Set([...(profile?.companies || []), ...companies.map(company => company.n)])];
+  companyNames.forEach(company => { const option = document.createElement('option'); option.value = company; options.append(option); });
+  if(!select.value) select.value = profile?.homeCompanies?.[0] || '';
+  document.getElementById('opportunityFields').disabled = opportunitySaving || !profile?.canPost;
+}
+async function loadOpportunityProfile(){
+  const session = opportunitySession;
+  try{
+    const result = await contactApi('opportunityProfile', {});
+    if(session === opportunitySession) applyOpportunityProfile(result.profile);
+  }catch(error){
+    if(session === opportunitySession){ applyOpportunityProfile(null); document.getElementById('opportunityIdentity').textContent = 'Could not verify posting access: ' + error.message + ' Refresh history to retry.'; }
+  }
+}
 const opportunityText = document.getElementById('opportunityText');
 const opportunityStatus = document.getElementById('opportunityStatus');
 const opportunityAllowed = ['doc','docx','xls','xlsx','pdf','jpg','jpeg','png'];
@@ -9,10 +33,11 @@ function resetOpportunitySession(){
   opportunityFiles = [];
   opportunitySaving = false;
   opportunityRequestId = null;
+  document.getElementById('opportunityCompany').value = '';
   opportunityText.value = '';
   opportunityStatus.textContent = '';
   document.getElementById('opportunityMessages').replaceChildren();
-  document.getElementById('opportunityFields').disabled = false;
+  applyOpportunityProfile(null);
   document.getElementById('opportunityFiles').value = '';
   renderOpportunityAttachments();
 }
@@ -58,7 +83,7 @@ function renderOpportunities(items){
   if(!items.length){ root.textContent = 'Your opportunities will appear here once you send them.'; return; }
   items.forEach(item => {
     const bubble = document.createElement('article'); bubble.className = 'opportunity-message';
-    const time = document.createElement('small'); time.textContent = 'You · ' + new Date(item.createdAt).toLocaleString(); bubble.append(time);
+    const time = document.createElement('small'); time.textContent = (item.postedBy || 'You') + (item.company ? ' · ' + item.company : '') + ' · ' + new Date(item.createdAt).toLocaleString(); bubble.append(time);
     if(item.text){ const p = document.createElement('p'); p.textContent = item.text; bubble.append(p); }
     const list = document.createElement('ul');
     (item.files || []).forEach(file => { const li = document.createElement('li'); li.textContent = file.name; list.append(li); });
@@ -74,11 +99,14 @@ async function loadOpportunities(){
   try{
     const result = await contactApi('opportunities', {});
     if(session !== opportunitySession) return;
+    applyOpportunityProfile(result.profile);
     renderOpportunities(result.opportunities || []);
   }catch(error){ if(session === opportunitySession) root.textContent = 'Could not load history: ' + error.message + ' Use Refresh history to retry.'; }
 }
 document.getElementById('opportunityComposer').addEventListener('submit', async event => {
   event.preventDefault(); if(opportunitySaving) return;
+  if(!opportunityProfile?.canPost){ opportunityStatus.textContent = 'A matching contact profile is required to post.'; return; }
+  const company = document.getElementById('opportunityCompany').value;
   const text = opportunityText.value.trim();
   if(!text && !opportunityFiles.length){ opportunityStatus.textContent = 'Paste an opportunity or attach a file first.'; return; }
   if(text.length > 20000){ opportunityStatus.textContent = 'Please keep the message under 20,000 characters.'; return; }
@@ -89,12 +117,13 @@ document.getElementById('opportunityComposer').addEventListener('submit', async 
   try{
     const files = await Promise.all(opportunityFiles.map(async file => ({name:file.name, dataBase64:await fileToBase64(file)})));
     if(session !== opportunitySession) return;
-    const result = await contactApi('saveOpportunity', {requestId:opportunityRequestId, text, files});
+    const result = await contactApi('saveOpportunity', {requestId:opportunityRequestId, text, files, company});
     if(session !== opportunitySession) return;
     if(!result.ok) throw new Error('The server did not confirm the save.');
     opportunityText.value = ''; opportunityFiles = []; opportunityRequestId = null; renderOpportunityAttachments();
     opportunityStatus.textContent = 'Saved to Professional Opportunity. You can send another opportunity.';
     await loadOpportunities();
   }catch(error){ if(session === opportunitySession) opportunityStatus.textContent = 'Could not save: ' + error.message + ' Your message and attachments are still here. Retry Send opportunity.'; }
-  finally{ if(session === opportunitySession){ opportunitySaving = false; document.getElementById('opportunityFields').disabled = false; } }
+  finally{ if(session === opportunitySession){ opportunitySaving = false; document.getElementById('opportunityFields').disabled = !opportunityProfile?.canPost; } }
 });
+document.getElementById('opportunityCompany').addEventListener('input', () => { opportunityRequestId = null; });
