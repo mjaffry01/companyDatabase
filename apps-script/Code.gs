@@ -41,6 +41,7 @@ const SPREADSHEET_ID = '1cgJ8wGEPkQW8QbrBuCqa9Z1Pcq62yma2R3N9YKoMSnk';
 const COMPANY_SHEET = 'Company Directory';
 const CONTACTS_SHEET = 'ShiaContacts';
 const MEMBERS_SHEET = 'Members';
+const AUTO_APPROVE_MINUTES = 3;
 const RESUMES_SHEET = 'Resumes';
 const RESUME_FOLDER_NAME = 'Professional Resumes Raw Data';
 const RESUME_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -123,9 +124,39 @@ function getMembersSheet(){
   let sheet = ss().getSheetByName(MEMBERS_SHEET);
   if(!sheet){
     sheet = ss().insertSheet(MEMBERS_SHEET);
-    sheet.appendRow(['Email', 'Approved', 'Google Account ID', 'First seen']);
+    sheet.appendRow(['Email', 'Approved', 'Google Account ID', 'First seen', 'Welcome email sent']);
+    return sheet;
+  }
+  // Add the welcome-email-sent column to existing sheets that were created before this feature.
+  const headers = sheet.getRange(1, 1, 1, 5).getValues()[0];
+  if(String(headers[4] || '').trim().toLowerCase() !== 'welcome email sent'){
+    sheet.getRange(1, 5).setValue('Welcome email sent');
   }
   return sheet;
+}
+
+function adminEmailAddresses(){
+  const p = PropertiesService.getScriptProperties();
+  return String(p.getProperty('ADMIN_EMAIL') || '').split(',').map(e => e.trim()).filter(e => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e));
+}
+
+function notifyAdminsOfPendingMember(email, sub){
+  const admins = adminEmailAddresses();
+  if(!admins.length) return;
+  const subject = 'New member approval needed: ' + email;
+  const appUrl = ScriptApp.getService().getUrl() || 'https://mjaffry01.github.io/companyDatabase/';
+  const body = 'A new member signed in to Company Contact Book:\n\nEmail: ' + email + '\nGoogle ID: ' + sub + '\nTime: ' + new Date().toLocaleString() + '\n\nTo approve immediately, open the Jobfinder spreadsheet Members tab and set Approved = TRUE for this email.\n\nIf you do nothing, they will be auto-approved in ' + AUTO_APPROVE_MINUTES + ' minutes and will receive a welcome email.\n\nApp: ' + appUrl;
+  admins.forEach(admin => {
+    try{ MailApp.sendEmail(admin, subject, body); }catch(error){ console.error('Admin notify failed', error); }
+  });
+}
+
+function sendWelcomeEmail(email){
+  const appUrl = ScriptApp.getService().getUrl() || 'https://mjaffry01.github.io/companyDatabase/';
+  try{
+    MailApp.sendEmail(email, 'Your Company Contact Book access is approved',
+      'Hi,\n\nYour access to the Company Contact Book has been granted. You can now sign in and explore the app.\n\n' + appUrl + '\n\nIf you did not request this, please ignore this email.');
+  }catch(error){ console.error('Welcome email failed', error); }
 }
 
 function findMemberRow(sheet, email){
@@ -146,17 +177,94 @@ function isApproved(email){
 function checkMembership(email, sub){
   const lock = LockService.getScriptLock();
   lock.waitLock(10000);
+  let isNew = false;
+  let rowNumber;
+  let approved = false;
+  let notifyAdmin = false;
+  let sendWelcome = false;
   try{
     const sheet = getMembersSheet();
     const row = findMemberRow(sheet, email);
     if(row === -1){
-      sheet.appendRow([email, false, sub, new Date()]);
-      return false;
+      sheet.appendRow([email, false, sub, new Date(), '']);
+      rowNumber = sheet.getLastRow();
+      isNew = true;
+    }else{
+      rowNumber = row;
     }
-    return sheet.getRange(row, 2).getValue() === true;
+
+    const approvedCell = sheet.getRange(rowNumber, 2);
+    approved = approvedCell.getValue() === true;
+    if(!approved){
+      const firstSeen = sheet.getRange(rowNumber, 4).getValue();
+      if(firstSeen && typeof firstSeen.getTime === 'function' && (Date.now() - firstSeen.getTime()) >= AUTO_APPROVE_MINUTES * 60 * 1000){
+        approvedCell.setValue(true);
+        approved = true;
+      }
+    }
+
+    if(isNew && !approved) notifyAdmin = true;
+    if(approved){
+      const sentCell = sheet.getRange(rowNumber, 5);
+      if(sentCell.getValue() !== true){
+        sentCell.setValue(true);
+        sendWelcome = true;
+      }
+    }
   }finally{
     lock.releaseLock();
   }
+
+  // Send emails outside the spreadsheet lock.
+  if(notifyAdmin) notifyAdminsOfPendingMember(email, sub);
+  if(sendWelcome) sendWelcomeEmail(email);
+  return approved;
+}
+
+function sendPendingWelcomeEmails(){
+  const sheet = getMembersSheet();
+  const data = sheet.getDataRange().getValues();
+  const rowsToSend = [];
+  for(let i = 1; i < data.length; i++){
+    const approved = data[i][1] === true;
+    const sent = data[i][4] === true;
+      if(approved && !sent) rowsToSend.push(i + 1);
+  }
+  rowsToSend.forEach(row => {
+    const email = sheet.getRange(row, 1).getValue();
+    try{
+      sendWelcomeEmail(email);
+      sheet.getRange(row, 5).setValue(true);
+    }catch(error){ console.error('Welcome email failed', error); }
+  });
+}
+
+function autoApprovePendingMembers(){
+  const lock = LockService.getScriptLock();
+  if(!lock.tryLock(10000)) return;
+  try{
+    const sheet = getMembersSheet();
+    const data = sheet.getDataRange().getValues();
+    const cutoff = AUTO_APPROVE_MINUTES * 60 * 1000;
+    for(let i = 1; i < data.length; i++){
+      const approved = data[i][1] === true;
+      const firstSeen = data[i][3];
+      if(!approved && firstSeen && typeof firstSeen.getTime === 'function' && (Date.now() - firstSeen.getTime()) >= cutoff){
+        sheet.getRange(i + 1, 2).setValue(true);
+      }
+    }
+  }finally{
+    lock.releaseLock();
+  }
+  sendPendingWelcomeEmails();
+}
+
+function setupAutoApprovalTrigger(){
+  const triggers = ScriptApp.getProjectTriggers();
+  const exists = triggers.some(t => t.getHandlerFunction() === 'autoApprovePendingMembers');
+  if(exists) return 'Auto-approval trigger already exists.';
+  ScriptApp.newTrigger('autoApprovePendingMembers').timeBased().everyMinutes(1).create();
+  return 'Auto-approval trigger created. It runs every minute.';
 }
 
 // ---- Company Directory ----

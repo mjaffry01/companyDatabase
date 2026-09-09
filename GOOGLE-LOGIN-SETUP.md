@@ -64,14 +64,28 @@ Push `index.html`, `auth.js`, `auth-config.js`, `sw.js`, `manifest.json` and `ic
 ## Approval
 
 The first time someone signs in, a row appears in the **Members** tab of the Jobfinder
-spreadsheet with `Approved = FALSE`. As administrator:
+spreadsheet with `Approved = FALSE`. The backend also emails the administrator(s) listed
+in the `ADMIN_EMAIL` Script property.
+
+As administrator you can:
 
 1. Open the Members tab.
 2. Find the row for that person's email.
-3. Set column B to `TRUE` to approve, or `FALSE` to revoke access.
-4. The user taps **Check access** after you approve them.
+3. Set column B to `TRUE` to approve immediately.
 
-There is no custom admin dashboard — approving is literally editing a spreadsheet cell.
+If you do nothing, the account is **auto-approved after 3 minutes**. Once approved
+(manually or automatically), the member receives a welcome email and can use the app.
+
+### Enable admin notifications and auto-approval
+
+1. In the Apps Script editor, open **Project Settings** (gear icon).
+2. Under **Script properties**, add:
+   - `ADMIN_EMAIL` — comma-separated admin email addresses (e.g. `admin1@example.com,admin2@example.com`)
+3. Save the Script properties.
+4. In the editor, select the function `setupAutoApprovalTrigger` and click **Run**. This
+   creates a 1-minute trigger that auto-approves pending members after 3 minutes and sends
+   welcome emails.
+5. The first time you run it, authorize the new **Mail** permission.
 
 ## Required security cutover
 

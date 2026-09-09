@@ -37,7 +37,7 @@ async function checkAccess(){
     const result = await contactApi('membership', {includeBootstrap:true});
     if(token !== window.idToken) return;
     if(!result.approved){
-      authStatusEl().textContent = 'Your account is awaiting administrator approval. Tap "Check access" after you have been approved.';
+      authStatusEl().textContent = 'New accounts are auto-approved within 3 minutes, or sooner when an administrator approves you. Tap "Check access" to retry.';
       return;
     }
     authStatusEl().textContent = 'Loading your contacts…';

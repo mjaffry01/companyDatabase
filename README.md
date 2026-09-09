@@ -45,6 +45,10 @@ index.html (+ auth.js, auth-config.js)         apps-script/Code.gs
   `/exec` URL stays the same and the live frontend keeps working. See
   `GOOGLE-LOGIN-SETUP.md` for full first-time setup, `ADDRESS-BACKEND.md` and
   `RESUME-UPLOAD-BACKEND.md` for the two features that needed this.
+- **Auto-approval**: new sign-ins are pending for up to 3 minutes (administrators receive an
+  email and can approve sooner; after 3 minutes the account is approved automatically and a
+  welcome email is sent). Set `ADMIN_EMAIL` in Apps Script Script properties and run
+  `setupAutoApprovalTrigger` once to enable notifications.
 - **Data lives in Google, not in this repo**: the "Jobfinder" Google Sheet
   (`SPREADSHEET_ID` in `Code.gs`) holds `Company Directory`, `ShiaContacts` (contacts),
   `Members` (approved sign-ins), and `Resumes` (resume-upload log) tabs. Resume files
