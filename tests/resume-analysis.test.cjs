@@ -89,3 +89,61 @@ test('configuration keeps Gemini first and skips missing keys without disabling 
   delete p.RESUME_GEMINI_API_KEY;assert.equal(c.analysisConfiguration().providers[0].provider,'openai');
   p.RESUME_LLM_ENABLED='false';assert.equal(c.analysisConfiguration(),null);
 });
+const sampleFit=()=>({strengths:['Java'],weaknesses:['No cloud'],matchedSkills:['Java'],missingSkills:['AWS'],yearsAssessment:'Close on years',resumeYears:4,jdYearsRequired:5,projectEvidence:['Checkout service used Java'],reviewNotes:[]});
+test('comparison validates JD evidence and years; rejects empty strengths and weaknesses',()=>{
+  const c=setup();
+  assert.equal(c.validateResumeFit(sampleFit()).matchedSkills.length,1);
+  assert.throws(()=>c.validateResumeFit({...sampleFit(),resumeYears:-1}));
+  assert.throws(()=>c.validateResumeFit({...sampleFit(),strengths:[],weaknesses:[]}));
+});
+test('compare waits when LLM is disabled and requires a job description',()=>{
+  const c=setup();
+  c.clampText=(value,max)=>String(value||'').trim().slice(0,max||500);
+  c.analysisConfiguration=()=>null;
+  assert.equal(c.compareResumeToOpportunity('a@example.com',{opportunityText:'Need Java',resumeText:'Java'}).status,'Awaiting LLM setup');
+  assert.throws(()=>c.compareResumeToOpportunity('a@example.com',{opportunityText:'  '}),/attach a JD/i);
+});
+test('compare tries Gemini first then OpenAI and stores the winning method',()=>{
+  const c=setup();const calls=[];const rows=[];
+  c.clampText=(value,max)=>String(value||'').trim().slice(0,max||500);
+  c.analysisConfiguration=()=>({providers:[{provider:'gemini',model:'g'},{provider:'openai',model:'o'}]});
+  c.comparisonResumePart=()=>({type:'input_text',text:'I used Java on payments',source:'pasted resume'});
+  c.callComparisonLLM=(provider)=>{calls.push(provider.provider);if(provider.provider==='gemini') throw Error('down');return sampleFit();};
+  c.resumeFitSheet=()=>({appendRow:row=>rows.push(row),getLastRow:()=>rows.length,getRange:()=>({setWrap:()=>({setVerticalAlignment(){}})})});
+  const result=c.compareResumeToOpportunity('a@example.com',{opportunityTitle:'Backend',opportunityText:'Need Java and AWS, 5 years'});
+  assert.equal(result.ok,true);assert.equal(result.method,'OpenAI / o');assert.deepEqual(calls,['gemini','openai']);
+  assert.match(String(rows[0][4]),/Java/);assert.equal(rows[0][11],'OpenAI / o');
+});
+test('Gemini comparison sends the JD and resume PDF in one request',()=>{
+  const c=setup();let sent;
+  const body={candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify(sampleFit())}]}}]};
+  c.UrlFetchApp={fetch:(url,options)=>{sent=JSON.parse(options.payload);return {getResponseCode:()=>200,getContentText:()=>JSON.stringify(body)};}};
+  const result=c.callComparisonLLM({provider:'gemini',model:'gemini-test',apiKey:'k'},c.comparisonPrompt(),c.comparisonSchema(),[
+    {type:'input_text',text:'JOB DESCRIPTION / OPPORTUNITY:\nNeed Java'},
+    {type:'input_file',file_data:'data:application/pdf;base64,AQID'}
+  ]);
+  assert.equal(result.strengths[0],'Java');
+  assert.match(sent.contents[0].parts[0].text,/Need Java/);
+  assert.equal(sent.contents[0].parts[1].inlineData.data,'AQID');
+});
+test('JD paste and UTF-8 files become one text block; images use OCR',()=>{
+  const c=setup();
+  c.clampText=(value,max)=>String(value||'').trim().slice(0,max||500);
+  c.getFileExtension=name=>{const match=/\.([a-z0-9]+)$/i.exec(name);return match?match[1].toLowerCase():'';};
+  c.Utilities={base64Decode:s=>Buffer.from(s,'base64'),base64Encode:b=>Buffer.from(b).toString('base64'),newBlob:bytes=>({getDataAsString:()=>Buffer.from(bytes).toString('utf8')})};
+  const joined=c.opportunitySourcesToText({opportunityText:'Hello',opportunityFiles:[{name:'jd.txt',dataBase64:Buffer.from('World').toString('base64')}]},{providers:[]});
+  assert.match(joined,/Hello/);assert.match(joined,/World/);
+  let ocr=0;
+  c.extractMediaText=(part)=>{ocr++;assert.match(part.file_data,/image\/png/);return 'Need Java 5 years';};
+  const fromImage=c.opportunitySourcesToText({opportunityText:'',opportunityFiles:[{name:'shot.png',dataBase64:'AQID'}]},{providers:[{provider:'gemini'}]});
+  assert.equal(ocr,1);assert.match(fromImage,/Need Java/);
+  assert.throws(()=>c.opportunitySourcesToText({opportunityText:'',opportunityFiles:[]},{providers:[]}),/attach a JD/i);
+});
+test('Gemini image OCR keeps the image mime type',()=>{
+  const c=setup();let sent;
+  const ocrBody={candidates:[{finishReason:'STOP',content:{parts:[{text:'  Backend JD  '}]}}]};
+  c.UrlFetchApp={fetch:(url,options)=>{sent=JSON.parse(options.payload);return {getResponseCode:()=>200,getContentText:()=>JSON.stringify(ocrBody)};}};
+  const text=c.extractMediaText({type:'input_file',filename:'jd.png',file_data:'data:image/png;base64,AQID'},{providers:[{provider:'gemini',model:'gemini-test',apiKey:'k'}]});
+  assert.equal(text,'Backend JD');
+  assert.equal(sent.contents[0].parts[0].inlineData.mimeType,'image/png');
+});

@@ -88,6 +88,11 @@ function doPost(e){
     if(action === 'saveWorkStatus') return json(saveWorkStatus(email, body.workStatus, payload.name));
     if(action === 'opportunities') return json({ opportunities: getOpportunities(email), profile: getOpportunityProfile(email) });
     if(action === 'saveOpportunity') return json(saveOpportunity(email, body));
+    if(action === 'compareResumeFit'){
+      return json(typeof compareResumeToOpportunity === 'function'
+        ? compareResumeToOpportunity(email, body)
+        : {error:'Resume comparison is not deployed yet.'});
+    }
     throw new Error('Unknown action.');
   }catch(error){
     return json({ error: (error && error.message) || String(error) });

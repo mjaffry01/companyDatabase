@@ -26,3 +26,11 @@ test('resume upload still saves if analysis file is not deployed',()=>{
   assert.equal(result.ok,true);
   assert.equal(result.driveUrl.includes('/d/abc'),true);
 });
+test('compare action reports when analysis file is not deployed',()=>{
+  const c=vm.createContext({}); vm.runInContext(fs.readFileSync('apps-script/Code.gs','utf8'),c);
+  c.json=value=>value;
+  c.verifyToken=()=>({email:'a@example.com',sub:'id'});
+  c.isApproved=()=>true;
+  const result=c.doPost({postData:{contents:JSON.stringify({action:'compareResumeFit',idToken:'token',opportunityText:'Need Java'})}});
+  assert.equal(result.error,'Resume comparison is not deployed yet.');
+});
