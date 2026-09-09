@@ -29,4 +29,14 @@
 .opportunity-attachment img{width:64px;height:64px;object-fit:contain;border-radius:6px}
 .opportunity-attachment span{flex:1;min-width:0}
 #opportunityStatus{font-size:13px;line-height:1.5}
+.fit-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
+.fit-panel{min-width:0;margin:0;padding:12px;border:1px solid var(--paper-line);border-radius:10px;background:#fbf7ed}
+.fit-panel legend{font-family:'Fraunces',serif;font-weight:600;padding:0 6px}
+.fit-report{margin-top:18px;padding:16px;border:1px solid var(--paper-line);border-radius:10px;background:#fff}
+.fit-report h4{font-family:'Fraunces',serif;margin:16px 0 8px;font-size:16px}
+.fit-report p,.fit-report li{line-height:1.55;overflow-wrap:anywhere}
+.fit-report ul{margin:0;padding-left:20px}
+.fit-strengths{background:#e3eee8;border-radius:8px;padding:8px 12px}
+.fit-weaknesses{background:#f7e8e4;border-radius:8px;padding:8px 12px}
+@media(max-width:800px){.fit-grid{grid-template-columns:1fr}}
 @media(max-width:600px){.tabs{flex-wrap:wrap}.tabs .tab-btn{flex:1 1 40%}.tabs .refresh-btn{flex:0 0 44px}.opportunity-heading,.opportunity-composer{padding:18px}#opportunityMessages{padding:12px 18px}.opportunity-message{max-width:95%}}

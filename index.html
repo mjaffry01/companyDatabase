@@ -138,6 +138,12 @@
   .add-form{ background:#fff; border: 1px solid var(--paper-line); border-radius: 10px; padding: 16px; }
   .add-form .field{ margin-bottom: 12px; }
   .add-form label{ display:block; font-size:11.5px; color: var(--text-dim); margin-bottom: 4px; }
+  .add-form textarea{
+    width:100%; padding: 9px 10px; border: 1px solid var(--paper-line); border-radius: 6px;
+    font-size:14px; font-family:'IBM Plex Sans', sans-serif; outline:none; background: #fff;
+    resize:vertical; min-height:120px;
+  }
+  .add-form textarea:focus{ border-color: var(--teal); }
   .add-form input[type="text"], .add-form input[type="tel"], .add-form input[type="email"]{
     width:100%; padding: 9px 10px; border: 1px solid var(--paper-line); border-radius: 6px;
     font-size:14px; font-family:'IBM Plex Sans', sans-serif; outline:none; background: #fff;
@@ -267,6 +273,7 @@
         <button class="tab-btn active" id="tabAddBtn" onclick="switchTab('add')">Add a contact</button>
         <button class="tab-btn" id="tabLookupBtn" onclick="switchTab('lookup')">Search &amp; lookup</button>
         <button class="tab-btn" id="tabResumeBtn" onclick="switchTab('resume')">Resumes</button>
+        <button class="tab-btn" id="tabFitBtn" onclick="switchTab('fit')">Resume fit</button>
         <button class="tab-btn" id="tabOpportunityBtn" onclick="switchTab('opportunity')">Opportunities</button>
         <button class="tab-btn refresh-btn" onclick="refreshContacts()" title="Refresh contacts" aria-label="Refresh contacts"><i class="fa-solid fa-rotate" aria-hidden="true"></i></button>
       </div>
@@ -363,6 +370,55 @@
           </div>
         </div>
       </div>
+      <section id="fitView" style="display:none;" aria-labelledby="fitTitle">
+        <div class="add-custom">
+          <div class="declaration">
+            <h3 id="fitTitle"><i class="fa-solid fa-scale-balanced" aria-hidden="true"></i> Compare a resume to an opportunity</h3>
+            <p>Put a resume on the left and a job description or opportunity on the right. You can paste text, drop a Word/Excel/PDF/HTML file, or paste a screenshot. Those files are converted to text, then Gemini checks skills, years of experience, and projects against the JD.</p>
+          </div>
+          <form id="fitForm" class="add-form">
+            <div class="fit-grid">
+              <fieldset class="fit-panel">
+                <legend>Resume</legend>
+                <div class="field">
+                  <label for="fit-resume-file">Resume file (.doc, .docx, .pdf, .html — max 5 MB)</label>
+                  <input type="file" id="fit-resume-file" accept=".doc,.docx,.pdf,.html,.htm">
+                </div>
+                <div class="field">
+                  <label for="fit-resume-gdoc">Google Doc link</label>
+                  <input type="text" id="fit-resume-gdoc" placeholder="https://docs.google.com/document/d/…" maxlength="500">
+                </div>
+                <div class="field">
+                  <label for="fit-resume-text">Or paste resume text</label>
+                  <textarea id="fit-resume-text" rows="8" maxlength="150000" placeholder="Paste the resume here…"></textarea>
+                </div>
+              </fieldset>
+              <fieldset class="fit-panel">
+                <legend>Opportunity / JD</legend>
+                <div class="field">
+                  <label for="fit-opportunity-title">Role or company (optional)</label>
+                  <input type="text" id="fit-opportunity-title" maxlength="200" placeholder="Company or job title">
+                </div>
+                <div class="field">
+                  <label for="fit-opportunity-text">Paste the opportunity or job description</label>
+                  <textarea id="fit-opportunity-text" rows="8" maxlength="20000" placeholder="Paste the JD, or paste a screenshot here…"></textarea>
+                </div>
+                <div id="fitJdAttachments" aria-label="JD attachments"></div>
+                <div class="field">
+                  <label for="fit-opportunity-files">Or attach Word, Excel, PDF, HTML, text, JPG, PNG, GIF or WebP</label>
+                  <input id="fit-opportunity-files" type="file" multiple accept=".txt,.html,.htm,.doc,.docx,.xls,.xlsx,.pdf,.jpg,.jpeg,.png,.gif,.webp">
+                </div>
+                <p class="opportunity-hint">Up to 5 files, 5 MB total. Images and documents are converted to text before Gemini compares them.</p>
+              </fieldset>
+            </div>
+            <div class="form-actions">
+              <span class="form-note" id="fitFormNote" role="status"></span>
+              <button class="btn btn-primary" id="fitCompareBtn" type="submit">Compare with Gemini</button>
+            </div>
+          </form>
+          <div id="fitReport" class="fit-report" hidden></div>
+        </div>
+      </section>
       <section id="opportunityView" style="display:none;" aria-labelledby="opportunityTitle">
         <div class="opportunity-heading">
           <h2 id="opportunityTitle">Professional Opportunity</h2>
@@ -502,6 +558,7 @@ window.clearContactSession = function(){
   for(const id of ['resultsAdd','resultsLookup','bookBody']) document.getElementById(id).replaceChildren();
   document.getElementById('kickerLine').textContent = 'Members contact book';
   resetResumeForm();
+  if(typeof resetResumeFitForm === 'function') resetResumeFitForm();
 };
 
 async function connect(bootstrap){
@@ -590,9 +647,11 @@ function switchTab(tab){
   document.getElementById('tabAddBtn').classList.toggle('active', tab === 'add');
   document.getElementById('tabLookupBtn').classList.toggle('active', tab === 'lookup');
   document.getElementById('tabResumeBtn').classList.toggle('active', tab === 'resume');
+  document.getElementById('tabFitBtn').classList.toggle('active', tab === 'fit');
   document.getElementById('addView').style.display = tab === 'add' ? 'block' : 'none';
   document.getElementById('lookupView').style.display = tab === 'lookup' ? 'block' : 'none';
   document.getElementById('resumeView').style.display = tab === 'resume' ? 'block' : 'none';
+  document.getElementById('fitView').style.display = tab === 'fit' ? 'block' : 'none';
   if(tab === 'lookup') renderLookup();
 }
 
@@ -1188,5 +1247,6 @@ if('serviceWorker' in navigator) window.addEventListener('load', () => navigator
 </script>
 <script src="opportunities.js"></script>
 <script src="profile.js"></script>
+<script src="compare.js"></script>
 </body>
 </html>
