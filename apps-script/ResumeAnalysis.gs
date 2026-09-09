@@ -65,7 +65,7 @@ function callResumeProviders(file, config){
     try{
       const result = validateResumeAnalysis(callResumeLLM(file, provider, part));
       return {result:result,method:analysisMethod(provider)};
-    }catch(error){ /* Try the next configured provider without logging sensitive content. */ }
+    }catch(error){ console.error('Resume analysis provider ' + provider.provider + ' failed: ' + (error && error.message)); }
   }
   throw new Error('All configured analysis providers failed.');
 }
@@ -168,19 +168,39 @@ function geminiPart(part){
   return {inlineData:{mimeType:match ? match[1] : 'application/pdf',data:match ? match[2] : String(part.file_data || '').split(',')[1]}};
 }
 
+// Retries transient failures (429 rate limit, 5xx, incomplete/malformed response) once with a short
+// backoff before giving up. A real client error (4xx other than 429) fails immediately - retrying it
+// would just waste the execution-time budget on a request that can never succeed.
+function callGeminiEndpoint(config, payload, parseResponse){
+  const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(config.model) + ':generateContent';
+  const attempts = 2;
+  let lastError;
+  for(let attempt = 0; attempt < attempts; attempt++){
+    if(attempt > 0 && typeof Utilities !== 'undefined' && Utilities.sleep) Utilities.sleep(1500);
+    const response = UrlFetchApp.fetch(url, {method:'post',contentType:'application/json',headers:{'x-goog-api-key':config.apiKey},muteHttpExceptions:true,payload:payload});
+    const code = response.getResponseCode();
+    if(code !== 200){
+      lastError = new Error('Gemini request failed (' + code + ').');
+      if(code === 429 || code >= 500) continue; // transient - retry
+      throw lastError; // e.g. 400/401/403 - retrying cannot help
+    }
+    try{ return parseResponse(response); }
+    catch(error){ lastError = error; } // incomplete/blocked/malformed - worth one retry
+  }
+  throw lastError;
+}
+
 function callGeminiJson(config, prompt, schema, parts){
-  const response = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(config.model) + ':generateContent',{
-    method:'post',contentType:'application/json',headers:{'x-goog-api-key':config.apiKey},muteHttpExceptions:true,
-    payload:JSON.stringify({systemInstruction:{parts:[{text:prompt}]},contents:[{role:'user',parts:parts}],
-      generationConfig:{responseMimeType:'application/json',responseJsonSchema:schema}})
+  const payload = JSON.stringify({systemInstruction:{parts:[{text:prompt}]},contents:[{role:'user',parts:parts}],
+    generationConfig:{responseMimeType:'application/json',responseJsonSchema:schema}});
+  return callGeminiEndpoint(config, payload, response => {
+    const body = JSON.parse(response.getContentText());
+    const candidate = (body.candidates || [])[0];
+    if(!candidate || candidate.finishReason !== 'STOP') throw new Error('Gemini response incomplete or blocked.');
+    const text = (candidate.content.parts || []).filter(p => !p.thought && typeof p.text === 'string').map(p => p.text).join('');
+    if(!text) throw new Error('Gemini returned no analysis.');
+    return JSON.parse(text);
   });
-  if(response.getResponseCode() !== 200) throw new Error('Gemini request failed.');
-  const body = JSON.parse(response.getContentText());
-  const candidate = (body.candidates || [])[0];
-  if(!candidate || candidate.finishReason !== 'STOP') throw new Error('Gemini response incomplete or blocked.');
-  const text = (candidate.content.parts || []).filter(p => !p.thought && typeof p.text === 'string').map(p => p.text).join('');
-  if(!text) throw new Error('Gemini returned no analysis.');
-  return JSON.parse(text);
 }
 
 function callGeminiResume(part, config, prompt, schema){
@@ -357,17 +377,15 @@ function fitOfficeToText(bytes, sourceMime, googleMime, exportMime){
 }
 
 function callGeminiPlainText(config, prompt, parts){
-  const response = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(config.model) + ':generateContent',{
-    method:'post',contentType:'application/json',headers:{'x-goog-api-key':config.apiKey},muteHttpExceptions:true,
-    payload:JSON.stringify({systemInstruction:{parts:[{text:prompt}]},contents:[{role:'user',parts:parts}]})
+  const payload = JSON.stringify({systemInstruction:{parts:[{text:prompt}]},contents:[{role:'user',parts:parts}]});
+  return callGeminiEndpoint(config, payload, response => {
+    const body = JSON.parse(response.getContentText());
+    const candidate = (body.candidates || [])[0];
+    if(!candidate || candidate.finishReason !== 'STOP') throw new Error('Gemini response incomplete or blocked.');
+    const text = (candidate.content.parts || []).filter(p => !p.thought && typeof p.text === 'string').map(p => p.text).join('');
+    if(!text.trim()) throw new Error('Gemini returned no text.');
+    return text.trim();
   });
-  if(response.getResponseCode() !== 200) throw new Error('Gemini request failed.');
-  const body = JSON.parse(response.getContentText());
-  const candidate = (body.candidates || [])[0];
-  if(!candidate || candidate.finishReason !== 'STOP') throw new Error('Gemini response incomplete or blocked.');
-  const text = (candidate.content.parts || []).filter(p => !p.thought && typeof p.text === 'string').map(p => p.text).join('');
-  if(!text.trim()) throw new Error('Gemini returned no text.');
-  return text.trim();
 }
 
 function extractMediaText(part, config){
@@ -385,7 +403,7 @@ function extractMediaText(part, config){
       const text = content.filter(item => item.type === 'output_text').map(item => item.text).join('');
       if(!text.trim()) throw new Error('LLM returned no text.');
       return text.trim();
-    }catch(error){ /* Try the next configured provider without logging sensitive content. */ }
+    }catch(error){ console.error('JD OCR provider ' + provider.provider + ' failed: ' + (error && error.message)); }
   }
   throw new Error('Could not read text from the attached opportunity file.');
 }
@@ -460,7 +478,7 @@ function compareResumeToOpportunity(email, data){
       result = validateResumeFit(callComparisonLLM(provider, prompt, schema, [jdPart, resumePart]));
       method = analysisMethod(provider);
       break;
-    }catch(error){ /* Try the next configured provider without logging sensitive content. */ }
+    }catch(error){ console.error('Resume fit provider ' + provider.provider + ' failed: ' + (error && error.message)); }
   }
   if(!result) throw new Error('Comparison failed. Check Gemini settings, quota, and file readability, then try again.');
   const sheet = resumeFitSheet();
