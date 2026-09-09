@@ -37,6 +37,23 @@ exported as text, then the temporary copy is moved to trash. Originals remain
 untouched. The Drive API must be enabled for the Apps Script Cloud project for
 these conversions/exports; existing Drive and external-request scopes are used.
 
+## Resume fit (compare.js / "Resume Fit" tab)
+
+A separate on-demand comparison, not tied to the Resumes upload flow. The
+"Resume fit" tab lets a member paste/attach a resume (file, Google Doc link,
+or pasted text) and a job description/opportunity (pasted text and/or up to
+5 attached files - text, Office docs, PDFs, or images read via OCR), then
+calls `compareResumeToOpportunity` (same `analysisConfiguration()` /
+Gemini-first-then-OpenAI setup as automatic uploads - no separate Script
+properties needed). It returns strengths, weaknesses, matched/missing JD
+skills, a years-of-experience assessment, and project evidence as validated
+structured JSON, and logs each comparison to a new **"Resume Fit"** sheet tab
+(auto-created by `setupResumeAnalysis`/`resumeFitSheet`). The `doPost`
+`compareResumeFit` action is guarded by `typeof compareResumeToOpportunity
+=== 'function'`, so the rest of the app keeps working if this file hasn't
+been redeployed yet - the frontend then shows a message telling the caller
+to deploy the updated `Code.gs`/`ResumeAnalysis.gs`.
+
 ## Recovery and limitations
 
 Run `retryResumeAnalysis` in the Apps Script editor to process up to five pending
