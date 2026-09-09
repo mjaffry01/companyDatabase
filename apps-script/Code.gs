@@ -144,7 +144,10 @@ function notifyAdminsOfPendingMember(email, sub){
   const admins = adminEmailAddresses();
   if(!admins.length) return;
   const subject = 'New member approval needed: ' + email;
-  const appUrl = ScriptApp.getService().getUrl() || 'https://mjaffry01.github.io/companyDatabase/';
+  // Always the public frontend, never ScriptApp.getService().getUrl(): that returns this
+  // backend's own /exec (or, for anything that isn't a live web-app request - an editor run,
+  // a time-driven trigger - the /dev test-deployment URL, which real users can't open at all).
+  const appUrl = 'https://mjaffry01.github.io/companyDatabase/';
   const body = 'A new member signed in to Company Contact Book:\n\nEmail: ' + email + '\nGoogle ID: ' + sub + '\nTime: ' + new Date().toLocaleString() + '\n\nTo approve immediately, open the Jobfinder spreadsheet Members tab and set Approved = TRUE for this email.\n\nIf you do nothing, they will be auto-approved in ' + AUTO_APPROVE_MINUTES + ' minutes and will receive a welcome email.\n\nApp: ' + appUrl;
   admins.forEach(admin => {
     try{ MailApp.sendEmail(admin, subject, body); }catch(error){ console.error('Admin notify failed', error); }
@@ -152,7 +155,10 @@ function notifyAdminsOfPendingMember(email, sub){
 }
 
 function sendWelcomeEmail(email){
-  const appUrl = ScriptApp.getService().getUrl() || 'https://mjaffry01.github.io/companyDatabase/';
+  // Always the public frontend, never ScriptApp.getService().getUrl(): that returns this
+  // backend's own /exec (or, for anything that isn't a live web-app request - an editor run,
+  // a time-driven trigger - the /dev test-deployment URL, which real users can't open at all).
+  const appUrl = 'https://mjaffry01.github.io/companyDatabase/';
   try{
     MailApp.sendEmail(email, 'Your Company Contact Book access is approved',
       'Hi,\n\nYour access to the Company Contact Book has been granted. You can now sign in and explore the app.\n\n' + appUrl + '\n\nIf you did not request this, please ignore this email.');
