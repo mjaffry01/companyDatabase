@@ -260,7 +260,7 @@
     <button class="btn btn-ghost" id="logoutBtn" onclick="logout()" hidden>Sign out</button>
   </section>
   <div class="ledger" id="ledgerRoot" hidden>
-    <div class="profile-toolbar"><button class="btn btn-ghost" id="profileButton" onclick="openUserProfile()" aria-haspopup="dialog" aria-controls="profileDialog"><i class="fa-solid fa-circle-user" aria-hidden="true"></i> My profile</button></div>
+    <div class="profile-toolbar"><button class="btn btn-ghost" id="profileButton" onclick="openUserProfile()" aria-label="Open profile" aria-haspopup="dialog" aria-controls="profileDialog"><i class="fa-solid fa-circle-user" aria-hidden="true"></i> <span id="profileButtonName"></span></button></div>
 
     <div id="mainPane">
       <div class="tabs">
@@ -358,6 +358,7 @@
           <div class="declaration" id="resumeThanksPanel" hidden>
             <h3><i class="fa-solid fa-circle-check" aria-hidden="true"></i> Thank you — the upload has happened</h3>
             <p>Your resume has been saved. Someone from the community may reach out if a matching opportunity comes up.</p>
+            <p id="resumeAnalysisNote" role="status"></p>
             <div class="form-actions"><button class="btn btn-ghost icon-btn" onclick="resetResumeForm()" title="Upload another resume" aria-label="Upload another resume"><i class="fa-solid fa-rotate-left" aria-hidden="true"></i></button></div>
           </div>
         </div>
@@ -394,7 +395,7 @@
 
 <div class="toast" id="toast"></div>
 <dialog id="profileDialog" aria-labelledby="profileTitle">
-  <div class="profile-title"><h2 id="profileTitle">My profile</h2><button class="btn btn-ghost" onclick="document.getElementById('profileDialog').close()" aria-label="Close profile">Close</button></div>
+  <div class="profile-title"><h2 id="profileTitle">Profile</h2><button class="btn btn-ghost" onclick="document.getElementById('profileDialog').close()" aria-label="Close profile">Close</button></div>
   <p id="profileMessage" role="status"></p>
   <dl id="profileDetails" hidden>
     <dt>Name</dt><dd id="profileName"></dd>
@@ -472,8 +473,8 @@ function showToast(msg){
   showToast._timer = setTimeout(()=> t.classList.remove('show'), 2600);
 }
 
-async function init(){
-  await connect();
+async function init(bootstrap){
+  await connect(bootstrap);
 }
 
 async function contactApi(action, data){
@@ -503,11 +504,15 @@ window.clearContactSession = function(){
   resetResumeForm();
 };
 
-async function connect(){
+async function connect(bootstrap){
+  const token = window.idToken;
   const checkBtn = document.getElementById('checkAccessBtn');
   checkBtn.disabled = true;
   try{
-    const [compJson, contJson] = await Promise.all([contactApi('companies'), contactApi('contacts')]);
+    const [compJson, contJson] = bootstrap?.companies && bootstrap?.contacts
+      ? [bootstrap, bootstrap]
+      : await Promise.all([contactApi('companies'), contactApi('contacts')]);
+    if(token !== window.idToken) return;
     companies = compJson.companies || [];
     ledger = normalizeContacts(contJson.contacts || {});
     document.getElementById('authGate').hidden = true;
@@ -517,11 +522,12 @@ async function connect(){
     renderAll();
     if(currentTab === 'lookup') renderLookup();
   }catch(err){
+    if(token !== window.idToken) return;
     document.getElementById('authStatus').textContent = 'Could not load contacts: ' + err.message;
     document.getElementById('authGate').hidden = false;
     document.getElementById('ledgerRoot').hidden = true;
   }finally{
-    checkBtn.disabled = false;
+    if(token === window.idToken) checkBtn.disabled = false;
   }
 }
 
@@ -1158,6 +1164,15 @@ async function submitResume(){
     if(note) note.textContent = '';
     document.getElementById('resumeFormWrap').hidden = true;
     document.getElementById('resumeThanksPanel').hidden = false;
+    const analysisMessages = {
+      'Complete':'Resume analysis has been added to resumen Analysis.',
+      'Review needed':'Resume analysis has been added and flagged for review.',
+      'Awaiting LLM setup':'Your resume is saved. Automatic analysis is waiting for the administrator to connect the LLM.',
+      'Processing':'Your resume is saved and analysis is in progress.',
+      'Pending':'Your resume is saved. Analysis is pending administrator retry.',
+      'Failed':'Your resume is saved. Analysis needs an administrator retry.'
+    };
+    document.getElementById('resumeAnalysisNote').textContent = analysisMessages[json.analysisStatus] || '';
     showToast('Thank you! The upload has happened.');
   }catch(err){
     resumeSaving = false;

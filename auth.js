@@ -2,6 +2,7 @@
 // Access is granted only after the administrator approves the signed-in Google account
 // in the "Members" tab of the backing spreadsheet (see apps-script/Code.gs).
 window.idToken = null;
+let accessRequest = null;
 
 function authStatusEl(){ return document.getElementById('authStatus'); }
 
@@ -27,21 +28,34 @@ async function handleCredentialResponse(response){
 
 async function checkAccess(){
   if(!window.idToken){ showSignedOutUI(); return; }
+  const token = window.idToken;
+  if(accessRequest === token) return;
+  accessRequest = token;
   const checkBtn = document.getElementById('checkAccessBtn');
   checkBtn.disabled = true;
   try{
-    const result = await contactApi('membership', {});
+    const result = await contactApi('membership', {includeBootstrap:true});
+    if(token !== window.idToken) return;
     if(!result.approved){
       authStatusEl().textContent = 'Your account is awaiting administrator approval. Tap "Check access" after you have been approved.';
       return;
     }
     authStatusEl().textContent = 'Loading your contacts…';
-    await window.init();
-    await loadOpportunityProfile();
+    await window.init(result);
+    if(token !== window.idToken) return;
+    if(result.profile){
+      applyOpportunityProfile(result.profile);
+      setProfileName(result.profile.name);
+    }else{
+      // Compatibility with a backend that has not yet received the bundled response.
+      void loadProfileName();
+    }
   }catch(error){
+    if(token !== window.idToken) return;
     authStatusEl().textContent = error.message || 'Could not check access. Try again.';
   }finally{
-    checkBtn.disabled = false;
+    if(accessRequest === token) accessRequest = null;
+    if(token === window.idToken) checkBtn.disabled = false;
   }
 }
 

@@ -1,6 +1,23 @@
 let profileGeneration = 0;
+function setProfileName(name){
+  document.getElementById('profileButtonName').textContent = name || '';
+  document.getElementById('profileTitle').textContent = name || 'Profile';
+  document.getElementById('profileButton').setAttribute('aria-label', name ? 'Open profile for ' + name : 'Open profile');
+}
+async function loadProfileName(){
+  const generation = profileGeneration;
+  const token = window.idToken;
+  try{
+    const result = await contactApi('profile', {});
+    if(generation === profileGeneration && token === window.idToken){
+      setProfileName(result.profile?.name);
+      if(result.profile) applyOpportunityProfile(result.profile);
+    }
+  }catch(error){ /* Keep the profile icon available so the user can retry. */ }
+}
 function clearUserProfile(){
   profileGeneration++;
+  setProfileName('');
   document.getElementById('profileDialog').close();
   document.getElementById('profileDetails').hidden = true;
   document.getElementById('profileStatusForm').hidden = true;
@@ -8,6 +25,7 @@ function clearUserProfile(){
   document.getElementById('profileStatusForm').reset();
 }
 function renderUserProfile(profile){
+  setProfileName(profile.name);
   document.getElementById('profileName').textContent = profile.name || 'Not provided';
   document.getElementById('profileCompany').textContent = profile.homeCompanies?.join(', ') || 'Not provided';
   document.getElementById('profileEmail').textContent = profile.email || 'Not provided';
