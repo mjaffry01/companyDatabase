@@ -200,7 +200,41 @@ test('sendOpportunityMatchEmail_ emails the matched candidate with score and ski
   c.MailApp={sendEmail:()=>{throw Error('quota exceeded');}};
   assert.doesNotThrow(()=>c.sendOpportunityMatchEmail_({name:'Sam',email:'sam@example.com',score:82,matchedSkills:[]},'Acme'));
 });
-test('analyzePostedOpportunity matches resumes and emails winners once analysis completes',()=>{
+// ---- Referral-contact notification ----
+test('findContactsForCompany_ matches company names case/whitespace-insensitively, dedupes by email, and skips bad emails',()=>{
+  const c=setup();
+  c.getContacts=()=>({'Acme Inc':[
+    {name:'Rita',email:'rita@acme.com'},
+    {name:'Rita Duplicate',email:'RITA@acme.com'}, // same email, different casing - counts once
+    {name:'No email',email:''}
+  ]});
+  const found=Array.from(c.findContactsForCompany_('  acme inc  '));
+  assert.equal(found.length,1);
+  assert.equal(found[0].email,'rita@acme.com');
+  assert.deepEqual(Array.from(c.findContactsForCompany_('Some Other Company')),[]);
+});
+test('findContactsForCompany_ tolerates getContacts being unavailable or throwing',()=>{
+  const c=setup();
+  assert.deepEqual(Array.from(c.findContactsForCompany_('Acme')),[]); // getContacts not defined in this context
+  c.getContacts=()=>{throw Error('sheet unavailable');};
+  assert.deepEqual(Array.from(c.findContactsForCompany_('Acme')),[]);
+});
+test('sendReferralMatchEmail_ lists every matched candidate and the poster, and never throws',()=>{
+  const c=setup();const mails=[];
+  c.MailApp={sendEmail:(to,subject,body)=>mails.push({to,subject,body})};
+  c.sendReferralMatchEmail_({name:'Rita',email:'rita@acme.com'},
+    [{name:'Sam',email:'sam@example.com',score:82,matchedSkills:['React']},{name:'Lee',email:'lee@example.com',score:70,matchedSkills:[]}],
+    'Acme',{name:'Poster Pat',email:'poster@example.com'});
+  assert.equal(mails.length,1);
+  assert.equal(mails[0].to,'rita@acme.com');
+  assert.match(mails[0].subject,/Acme opening/);
+  assert.match(mails[0].body,/Sam <sam@example\.com>.*82%/);
+  assert.match(mails[0].body,/Lee <lee@example\.com>.*70%/);
+  assert.match(mails[0].body,/Poster Pat \(poster@example\.com\)/);
+  c.MailApp={sendEmail:()=>{throw Error('quota exceeded');}};
+  assert.doesNotThrow(()=>c.sendReferralMatchEmail_({email:'rita@acme.com'},[{name:'Sam',email:'sam@example.com',score:82,matchedSkills:[]}],'Acme',{}));
+});
+test('analyzePostedOpportunity matches resumes, emails winners, and notifies a referral contact naming the poster',()=>{
   const c=setup();const mails=[];
   c.clampText=(value,max)=>String(value||'').trim().slice(0,max||500);
   c.MailApp={sendEmail:(to,subject,body)=>mails.push({to,subject,body})};
@@ -209,13 +243,32 @@ test('analyzePostedOpportunity matches resumes and emails winners once analysis 
   c.opportunitySourcesToText=()=>'Need React, 4 years';
   const rows=[Array(12).fill(''),['Sam','sam@example.com',5,'React','','','','','id1','Complete','','']];
   c.resumeAnalysisSheet=()=>({getDataRange:()=>({getValues:()=>rows})});
+  c.getContacts=()=>({Acme:[{name:'Rita',email:'rita@acme.com'}]});
   const writes=[];
   c.writeOpportunityAnalysisRow_=(email,requestId,company,payload,summary)=>writes.push({email,requestId,company,payload,summary});
-  const result=c.analyzePostedOpportunity('poster@example.com',{requestId:'req-1',company:'Acme',text:'Need React, 4 years'});
+  const result=c.analyzePostedOpportunity('poster@example.com',{requestId:'req-1',company:'Acme',text:'Need React, 4 years',postedBy:'Poster Pat'});
   assert.equal(result.status,'Complete');
   assert.equal(result.matches.length,1);
-  assert.equal(result.matches[0].email,'sam@example.com');
-  assert.equal(mails.length,1);
-  assert.equal(mails[0].to,'sam@example.com');
+  assert.equal(result.referralContactsNotified,1);
+  assert.equal(mails.length,2);
+  assert.equal(mails[0].to,'sam@example.com'); // candidate notified first
+  assert.equal(mails[1].to,'rita@acme.com'); // then the referral contact
+  assert.match(mails[1].body,/Poster Pat \(poster@example\.com\)/);
   assert.deepEqual(writes[0].payload.matches[0].email,'sam@example.com'); // matches travel with the written payload, but are not part of the sheet's fixed columns
+});
+test('analyzePostedOpportunity skips the referral email entirely when the company has no saved contact',()=>{
+  const c=setup();const mails=[];
+  c.clampText=(value,max)=>String(value||'').trim().slice(0,max||500);
+  c.MailApp={sendEmail:(to,subject,body)=>mails.push({to,subject,body})};
+  c.PropertiesService={getScriptProperties:()=>({getProperty:key=>({RESUME_LLM_ENABLED:'true',RESUME_GEMINI_API_KEY:'k',RESUME_GEMINI_MODEL:'gemini-test'})[key]})};
+  c.callOpportunityAnalysisProviders=()=>({result:{yearsExperience:4,technicalSkills:['React'],nonTechnicalSkills:[],experienceBasis:'4 years required',reviewNotes:[]},method:'Gemini / gemini-test'});
+  c.opportunitySourcesToText=()=>'Need React, 4 years';
+  const rows=[Array(12).fill(''),['Sam','sam@example.com',5,'React','','','','','id1','Complete','','']];
+  c.resumeAnalysisSheet=()=>({getDataRange:()=>({getValues:()=>rows})});
+  c.getContacts=()=>({}); // no contact saved for Acme
+  c.writeOpportunityAnalysisRow_=()=>{};
+  const result=c.analyzePostedOpportunity('poster@example.com',{requestId:'req-1',company:'Acme',text:'Need React, 4 years',postedBy:'Poster Pat'});
+  assert.equal(result.referralContactsNotified,0);
+  assert.equal(mails.length,1); // candidate only, no referral email
+  assert.equal(mails[0].to,'sam@example.com');
 });

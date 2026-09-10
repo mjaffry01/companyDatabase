@@ -171,9 +171,11 @@ document.getElementById('opportunityComposer').addEventListener('submit', async 
     if(!result.ok) throw new Error('The server did not confirm the save.');
     opportunityText.value = ''; opportunityFiles = []; opportunityRequestId = null; renderOpportunityAttachments();
     const matchCount = result.opportunity?.analysis?.matches?.length || 0;
+    const referralCount = result.opportunity?.analysis?.referralContactsNotified || 0;
     opportunityStatus.textContent = result.opportunity?.analysis
       ? ('Saved. AI status: ' + (result.opportunity.analysis.status || 'Complete')
         + (matchCount ? ' · ' + matchCount + ' matching candidate' + (matchCount === 1 ? '' : 's') + ' notified' : '')
+        + (referralCount ? ' · ' + referralCount + ' referral contact' + (referralCount === 1 ? '' : 's') + ' notified' : '')
         + '. You can send another opportunity.')
       : 'Saved to Professional Opportunity. You can send another opportunity.';
     await loadOpportunities();

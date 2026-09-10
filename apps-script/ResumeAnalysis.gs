@@ -658,7 +658,15 @@ function analyzePostedOpportunity(email, data){
     // computed fresh each time an opportunity is posted).
     const matches = matchOpportunityToResumes_(payload);
     matches.forEach(match => sendOpportunityMatchEmail_(match, company));
+    let referralContactsNotified = 0;
+    if(matches.length){
+      const referralContacts = findContactsForCompany_(company);
+      const poster = {name: clampText(data.postedBy, 150), email: email};
+      referralContacts.forEach(contact => sendReferralMatchEmail_(contact, matches, company, poster));
+      referralContactsNotified = referralContacts.length;
+    }
     payload.matches = matches;
+    payload.referralContactsNotified = referralContactsNotified;
     writeOpportunityAnalysisRow_(email, requestId, company, payload, sourceSummary);
     return payload;
   }catch(error){
@@ -818,6 +826,49 @@ function sendOpportunityMatchEmail_(match, company){
       + 'A member of the community may reach out to you about it directly. If you would like to update or remove '
       + 'your resume, use the Resumes tab.\n\nWishing you all the best.\n\nIf you did not request this, please ignore this email.');
   }catch(error){ console.error('Opportunity match email failed', error); }
+}
+
+// Looks up the referral contacts (getContacts(), defined in Code.gs) saved for
+// the opportunity's company, matched case/whitespace-insensitively, deduplicated
+// by email, and limited to entries with a usable email address.
+function findContactsForCompany_(company){
+  if(typeof getContacts !== 'function') return [];
+  let contacts;
+  try{ contacts = getContacts(); }
+  catch(error){ console.error('Could not read referral contacts for opportunity matching', error); return []; }
+  const normalize = typeof normalizeKey === 'function' ? normalizeKey : (value => String(value || '').toLowerCase().replace(/\s+/g, ' ').trim());
+  const target = normalize(company);
+  if(!target) return [];
+  const key = Object.keys(contacts || {}).find(candidate => normalize(candidate) === target);
+  const list = key ? contacts[key] : [];
+  const seen = new Set();
+  return list.filter(contact => {
+    const email = String(contact.email || '').trim().toLowerCase();
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || seen.has(email)) return false;
+    seen.add(email);
+    return true;
+  });
+}
+
+// Emails one referral contact at the opportunity's company (when one exists) a
+// summary of every matched candidate for that posting, plus who posted it, so
+// they can coordinate a referral. One email per contact per posting, not per
+// candidate, to avoid flooding a contact when several candidates match.
+function sendReferralMatchEmail_(contact, matches, company, poster){
+  try{
+    const lines = matches.map(match => {
+      const skillsLine = match.matchedSkills.length ? match.matchedSkills.join(', ') : 'their background';
+      return '- ' + (match.name || 'A candidate') + ' <' + match.email + '> - roughly ' + match.score + '% match (' + skillsLine + ')';
+    }).join('\n');
+    const postedByLine = poster && (poster.name || poster.email)
+      ? ' It was posted by ' + (poster.name || 'a member') + (poster.email ? ' (' + poster.email + ')' : '') + ' - reach out to them to coordinate.'
+      : '';
+    MailApp.sendEmail(contact.email, 'Candidate match' + (matches.length > 1 ? 'es' : '') + ' for your ' + company + ' opening',
+      'Hi' + (contact.name ? ' ' + contact.name : '') + ',\n\n'
+      + 'A new opportunity at ' + company + ' was just posted in the Company Contact Book.' + postedByLine + '\n\n'
+      + 'The following candidate' + (matches.length > 1 ? 's look' : ' looks') + ' like a possible fit based on their resume:\n\n' + lines + '\n\n'
+      + 'This is an automated skills/experience match, not a verified reference - please review before referring.\n\nWishing you all the best.');
+  }catch(error){ console.error('Referral match email failed', error); }
 }
 
 // Owner-run recovery/backfill. Safe to rerun; completed rows are preserved.

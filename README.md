@@ -118,8 +118,11 @@ this project's history (see git log):
   shown in their own history. AI processing is deferred. Once the AI extracts an
   opportunity's required skills and years of experience, it's scored against every
   analyzed resume; candidates scoring 60+ are emailed directly, and the poster sees
-  the matched names, scores and skills alongside the AI requirements. See
-  `OPPORTUNITY-BACKEND.md` for the required separate backend deployment.
+  the matched names, scores and skills alongside the AI requirements. If the
+  opportunity's company has a saved referral contact (ReferrerContact), that
+  contact is emailed once with every matched candidate and who posted the
+  opportunity. See `OPPORTUNITY-BACKEND.md` for the required separate backend
+  deployment.
 
 - **Add a contact** tab: for people currently employed somewhere to share a contact
   there for referrals.

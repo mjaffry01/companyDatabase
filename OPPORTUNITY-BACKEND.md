@@ -40,13 +40,25 @@ vague posting can't fan out into unbounded emails. Matches are **not** written
 to the Opportunity Analysis sheet (no schema change needed); they're computed
 fresh each time and returned as `analysis.matches` on the opportunity record.
 
-For every match, `sendOpportunityMatchEmail_` emails the **candidate** (not
-the opportunity poster, and not any referral contact) a short note naming the
-company, their approximate match score, and the matched skills - a candidate
-email failure is logged and swallowed, never blocking the save. The person who
-posted the opportunity sees the matched candidates' names, scores and matched
-skills in the Opportunities tab, under the same AI-requirements panel (no
-candidate email addresses are shown there).
+For every match, `sendOpportunityMatchEmail_` emails the **candidate** a short
+note naming the company, their approximate match score, and the matched
+skills - a candidate email failure is logged and swallowed, never blocking the
+save. The person who posted the opportunity sees the matched candidates'
+names, scores and matched skills in the Opportunities tab, under the same
+AI-requirements panel (no candidate email addresses are shown there).
+
+If there is at least one match, `findContactsForCompany_` looks up the
+opportunity's company in the **ReferrerContact** sheet (via `getContacts()` in
+Code.gs, matched case/whitespace-insensitively, deduplicated by email). Each
+referral contact found gets **one** email from `sendReferralMatchEmail_`
+listing every matched candidate (name, email, score, matched skills) for that
+posting, plus who posted the opportunity (name and email, from `profile.name`
+in `saveOpportunity` and the verified sign-in email) so the contact knows who
+to coordinate with. One email per contact per posting, not per candidate, so a
+company with several matches doesn't flood its referral contact. No email goes
+out at all when the company has no saved referral contact. The count of
+contacts notified is returned as `analysis.referralContactsNotified` and shown
+in the post-save status line alongside the candidate match count.
 
 Approved members can submit and reload their latest 100 submissions. The backend
 additionally requires the signed-in email to match the Email of a named contact

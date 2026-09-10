@@ -1068,7 +1068,8 @@ function saveOpportunity(email, data){
         requestId: requestId,
         company: company,
         text: text,
-        files: attachments.map(file => ({ name: file.name, dataBase64: file.dataBase64 }))
+        files: attachments.map(file => ({ name: file.name, dataBase64: file.dataBase64 })),
+        postedBy: profile.name
       });
       record.analysis = analysis;
       const updateLock = LockService.getScriptLock();
