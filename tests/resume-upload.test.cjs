@@ -37,6 +37,7 @@ function makeSheet(){
 function backend(){
   const sheets = {};
   const files = {};
+  const mails = [];
   let nextFileId = 1;
   const folder = {
     createFile(){
@@ -64,10 +65,11 @@ function backend(){
       getUuid: () => 'uuid'
     },
     Session: { getScriptTimeZone: () => 'Etc/UTC' },
-    PropertiesService: { getScriptProperties: () => ({ getProperty: () => null, setProperty(){} }) }
+    PropertiesService: { getScriptProperties: () => ({ getProperty: () => null, setProperty(){} }) },
+    MailApp: { sendEmail: (to, subject, body) => mails.push({ to, subject, body }) }
   });
   vm.runInContext(fs.readFileSync('apps-script/Code.gs', 'utf8'), context);
-  return { context, sheets, files };
+  return { context, sheets, files, mails };
 }
 
 const upload = (overrides = {}) => ({
@@ -114,4 +116,20 @@ test('deleteResume only lets the submitter remove their own resume, and trashes 
 test('deleteResume requires a driveUrl', () => {
   const b = backend();
   assert.throws(() => b.context.deleteResume('me@example.com', {}), /Missing resume/);
+});
+
+test('a successful upload emails the candidate a confirmation', () => {
+  const b = backend();
+  const result = b.context.uploadResume('me@example.com', upload({ email: 'candidate@example.com' }));
+  assert.equal(result.ok, true);
+  assert.equal(b.mails.length, 1);
+  assert.equal(b.mails[0].to, 'candidate@example.com');
+  assert.match(b.mails[0].subject, /resume has been uploaded/i);
+  assert.match(b.mails[0].body, /uploaded to the Company Contact Book/);
+});
+
+test('a rejected upload (bad format) sends no email', () => {
+  const b = backend();
+  assert.throws(() => b.context.uploadResume('me@example.com', upload({ fileName: 'resume.pdf' })));
+  assert.equal(b.mails.length, 0);
 });

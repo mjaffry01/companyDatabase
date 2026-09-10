@@ -781,6 +781,13 @@ function ensureResumesHeader(sheet){
   sheet.getRange(1, 1, 1, RESUMES_HEADER.length).setValues([RESUMES_HEADER]);
 }
 
+function sendResumeUploadEmail(email){
+  try{
+    MailApp.sendEmail(email, 'Your resume has been uploaded',
+      'Hi,\n\nYour resume has been uploaded to the Company Contact Book. We are looking for opportunities to match your resume with employers in the community.\n\nThank you for uploading. Wishing you all the best.\n\nIf you did not request this, please ignore this email.');
+  }catch(error){ console.error('Resume upload email failed', error); }
+}
+
 function logResumeUpload(row){
   let sheet = ss().getSheetByName(RESUMES_SHEET);
   if(!sheet) sheet = ss().insertSheet(RESUMES_SHEET);
@@ -867,6 +874,7 @@ function uploadResume(submitterEmail, data){
     }
 
     logResumeUpload([new Date(), name, email, phone, status, loggedFileName, driveUrl, submitterEmail]);
+    sendResumeUploadEmail(email);
     return { ok: true, driveUrl: driveUrl };
   }finally{
     lock.releaseLock();
