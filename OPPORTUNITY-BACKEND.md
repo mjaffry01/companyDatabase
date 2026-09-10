@@ -10,11 +10,17 @@ frontend release to activate this feature. Existing approval rules still apply.
 
 The Opportunities tab accepts pasted text, clipboard JPG/PNG images, and Word
 (.doc/.docx), Excel (.xls/.xlsx), PDF, JPG/JPEG and PNG files. Limits: 20,000
-characters and 5 attachments totaling 5 MB per submission. AI processing is not enabled.
+characters and 5 attachments totaling 5 MB per submission. After a successful
+save, AI (same Gemini-first / OpenAI Script properties as resume analysis)
+decomposes the opportunity into **Years of experience**, **Technical skills**,
+**Non-technical skills**, **Experience basis**, and **Review notes**. Results
+are stored on the opportunity JSON, shown in the Opportunities tab, and logged
+to an **Opportunity Analysis** sheet. If LLM properties are missing, the
+opportunity still saves and analysis status is `Awaiting LLM setup`.
 
 Approved members can submit and reload their latest 100 submissions. The backend
 additionally requires the signed-in email to match the Email of a named contact
-in ShiaContacts before posting. Owner Email does not qualify: it may identify
+in ReferrerContact before posting. Owner Email does not qualify: it may identify
 someone who entered a colleague's contact. The Opportunities header displays the
 matched name and company after sign-in. Any approved member with this contact
 match may select or enter another company when posting; separate per-company

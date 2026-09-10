@@ -12,7 +12,7 @@ Blaze plan (a card on file) even for $0 actual usage. That code is kept for refe
 
 1. The frontend loads Google Identity Services and shows a "Sign in with Google" button.
 2. After sign-in, the frontend has a Google ID token (a signed JWT) proving who the user is.
-3. Every data request (`membership`, `companies`, `contacts`, `addContact`) is POSTed to
+3. Every data request (`membership`, `companies`, `contacts`, `addReferrerContact`) is POSTed to
    the Apps Script Web App along with that ID token.
 4. The Apps Script backend verifies the token against Google's own `tokeninfo` endpoint
    (checks audience, issuer, and that the email is verified) on every request — nothing is

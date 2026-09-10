@@ -75,13 +75,17 @@ function initGoogleSignIn(){
     signIn.replaceChildren();
     signIn.hidden = false;
     authStatusEl().textContent = protocol === 'file:'
-      ? 'Google sign-in cannot run from a file opened on your computer. Open the online Contact Book to sign in.'
-      : 'Google sign-in needs a secure website address. Open the online Contact Book to sign in.';
+      ? 'Google sign-in cannot run from a double-clicked file. Serve this folder over localhost (for example: npx --yes serve -l 8000) then open http://localhost:8000 — and add http://localhost:8000 as an Authorized JavaScript origin on your Google OAuth client.'
+      : 'Google sign-in needs http://localhost or https. Serve this folder locally, or open the online Contact Book.';
     const link = document.createElement('a');
     link.href = 'https://mjaffry01.github.io/companyDatabase/';
     link.textContent = 'Open online Contact Book';
     link.className = 'btn btn-primary';
     signIn.append(link);
+    const localHint = document.createElement('p');
+    localHint.style.cssText = 'margin-top:12px;font-size:13px;color:var(--text-dim);';
+    localHint.textContent = 'Local login: run a static server in this folder, then use http://localhost (not file://).';
+    signIn.append(localHint);
     return;
   }
   if(!window.GOOGLE_CLIENT_ID || window.GOOGLE_CLIENT_ID.indexOf('PASTE_') === 0){

@@ -18,7 +18,7 @@ index.html (+ auth.js, auth-config.js)         apps-script/Code.gs
                                                        |
                                                        v
                                           Google Sheet "Jobfinder"
-                                          (Company Directory / ShiaContacts /
+                                          (Company Directory / ReferrerContact /
                                            Members / Resumes tabs)
                                                        |
                                                        v
@@ -50,7 +50,7 @@ index.html (+ auth.js, auth-config.js)         apps-script/Code.gs
   welcome email is sent). Set `ADMIN_EMAIL` in Apps Script Script properties and run
   `setupAutoApprovalTrigger` once to enable notifications.
 - **Data lives in Google, not in this repo**: the "Jobfinder" Google Sheet
-  (`SPREADSHEET_ID` in `Code.gs`) holds `Company Directory`, `ShiaContacts` (contacts),
+  (`SPREADSHEET_ID` in `Code.gs`) holds `Company Directory`, `ReferrerContact` (referrer contacts; legacy tab name `ShiaContacts`),
   `Members` (approved sign-ins), and `Resumes` (resume-upload log) tabs. Resume files
   themselves land in a Drive folder named "Professional Resumes Raw Data" (auto-created
   by the script), owned by whichever account deployed the script.

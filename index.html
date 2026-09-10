@@ -155,6 +155,8 @@
   .location-help{ font-size:12px; color:var(--text-dim); line-height:1.5; margin:8px 0 0; }
   .field-row{ display:flex; gap:10px; }
   .field-row .field{ flex:1; }
+  .career-edit-form, .career-hr-form{ margin-top:14px; }
+  .career-actions-row{ display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; align-items:center; }
 
   .declaration{
     background: #FBF7ED; border: 1px solid #E7D9B8; border-radius: 8px; padding: 12px 14px;
@@ -270,11 +272,12 @@
 
     <div id="mainPane">
       <div class="tabs">
-        <button class="tab-btn active" id="tabAddBtn" onclick="switchTab('add')">Add a contact</button>
+        <button class="tab-btn active" id="tabAddBtn" onclick="switchTab('add')">Add a Referrer</button>
         <button class="tab-btn" id="tabLookupBtn" onclick="switchTab('lookup')">Search &amp; lookup</button>
         <button class="tab-btn" id="tabResumeBtn" onclick="switchTab('resume')">Resumes</button>
         <button class="tab-btn" id="tabFitBtn" onclick="switchTab('fit')">Resume fit</button>
         <button class="tab-btn" id="tabOpportunityBtn" onclick="switchTab('opportunity')">Opportunities</button>
+        <button class="tab-btn" id="tabCareerBtn" onclick="switchTab('career')">Careers</button>
         <button class="tab-btn refresh-btn" onclick="refreshContacts()" title="Refresh contacts" aria-label="Refresh contacts"><i class="fa-solid fa-rotate" aria-hidden="true"></i></button>
       </div>
 
@@ -293,11 +296,11 @@
         <div class="results" id="resultsAdd"></div>
         <div class="ledger-footer">
           <div class="ledger-footer-head">
-            <h2>Your contacts sheet</h2>
+            <h2>Your Referrer contacts</h2>
             <span id="totalContactsLabel">0 people saved</span>
           </div>
           <table class="book">
-            <thead><tr><th>Company</th><th>Contact name</th><th>Contact</th></tr></thead>
+            <thead><tr><th>Company</th><th>Referrer name</th><th>Contact</th></tr></thead>
             <tbody id="bookBody"></tbody>
           </table>
         </div>
@@ -444,6 +447,20 @@
           </fieldset>
           <p id="opportunityStatus" role="status"></p>
         </form>
+      </section>
+      <section id="careerView" style="display:none;" aria-labelledby="careerTitle">
+        <div class="declaration" style="margin:20px 26px 0;">
+          <h3 id="careerTitle"><i class="fa-solid fa-briefcase" aria-hidden="true"></i> Company career pages</h3>
+          <p>Career links come from <strong>careerOpportunities</strong>. Anyone can <strong>Edit link</strong> if a URL is wrong, and <strong>Add / update HR</strong> to share an HR name, phone, or email. LinkedIn <strong>HR</strong> / <strong>CTO</strong> searches stay available for discovery.</p>
+        </div>
+        <div class="search-bar">
+          <label for="searchInputCareer">Search companies</label>
+          <div class="search-input-row">
+            <input type="text" id="searchInputCareer" placeholder="Company name or contact…" autocomplete="off" oninput="renderCareers()">
+          </div>
+          <div class="search-meta" id="searchMetaCareer"></div>
+        </div>
+        <div class="results" id="resultsCareer"></div>
       </section>
     </div>
   </div>
@@ -643,6 +660,9 @@ function switchTab(tab){
   document.getElementById('tabOpportunityBtn').classList.toggle('active', tab === 'opportunity');
   document.getElementById('opportunityView').style.display = tab === 'opportunity' ? 'block' : 'none';
   if(tab === 'opportunity') loadOpportunities();
+  document.getElementById('tabCareerBtn').classList.toggle('active', tab === 'career');
+  document.getElementById('careerView').style.display = tab === 'career' ? 'block' : 'none';
+  if(tab === 'career') renderCareers();
   currentTab = tab;
   document.getElementById('tabAddBtn').classList.toggle('active', tab === 'add');
   document.getElementById('tabLookupBtn').classList.toggle('active', tab === 'lookup');
@@ -865,7 +885,7 @@ function cancelOrganizationForm(){
   renderAdd();
 }
 
-function createOrganization(){
+async function createOrganization(){
   const name = document.getElementById('org-name').value.trim();
   const sector = document.getElementById('org-sector').value.trim();
   const type = document.getElementById('org-type').value.trim();
@@ -880,15 +900,43 @@ function createOrganization(){
     return;
   }
 
-  companies.push({ n: name, s: sector || 'Not specified', t: type || 'Not specified', a: address || 'Not specified' });
-  companies.sort((a,b) => a.n.localeCompare(b.n));
-  organizationFormOpen = false;
-  openCompany = name;
-  const search = document.getElementById('searchInputAdd');
-  search.value = name;
-  renderAll();
-  setTimeout(()=> { const el = document.getElementById('f-name'); if(el) el.focus(); }, 30);
-  showToast(`${name} added — now add a contact`);
+  showToast('Adding company and searching for careers page…');
+  try{
+    const json = await contactApi('addCompany', {
+      name,
+      sector: sector || 'Not specified',
+      type: type || 'Not specified',
+      address: address || 'Not specified'
+    });
+    if(json.error) throw new Error(json.error);
+
+    const company = json.company || {
+      n: name,
+      s: sector || 'Not specified',
+      t: type || 'Not specified',
+      a: address || 'Not specified',
+      c: ''
+    };
+    companies.push(company);
+    companies.sort((a,b) => a.n.localeCompare(b.n));
+    if(company.c) setLocalCareerUrl(company.n, company.c);
+
+    organizationFormOpen = false;
+    openCompany = company.n;
+    const search = document.getElementById('searchInputAdd');
+    search.value = company.n;
+    updateKicker();
+    renderAll();
+    if(currentTab === 'career') renderCareers();
+    setTimeout(()=> { const el = document.getElementById('f-name'); if(el) el.focus(); }, 30);
+
+    const linkNote = company.c
+      ? (json.careerSource === 'ai-discover' ? ' · careers page found' : ' · careers search link ready')
+      : '';
+    showToast(`${company.n} added${linkNote} — now add a Referrer`);
+  }catch(err){
+    showToast('Could not add organization: ' + err.message);
+  }
 }
 
 function renderCompanyRow(c){
@@ -1016,7 +1064,7 @@ async function submitContact(companyName){
   if(note) note.textContent = 'Writing to your sheet…';
 
   try{
-    const json = await contactApi('addContact', { company: companyName, name, phone, email, address, confirmed });
+    const json = await contactApi('addReferrerContact', { company: companyName, name, phone, email, address, confirmed });
     if(json.error) throw new Error(json.error);
 
     if(!ledger[companyName]) ledger[companyName] = [];
@@ -1116,6 +1164,347 @@ function renderLookupBlock(c){
         ` : `<div class="no-people">No contacts logged for this company yet.</div>`}
       </div>
     </div>`;
+}
+
+/* ---------- CAREERS TAB ---------- */
+
+let careerUrlMap = null;
+let careerUrlMapLoading = null;
+let careerEditCompany = null;
+let careerHrCompany = null;
+let careerSaving = false;
+let careerHrSaving = false;
+
+function normalizeCompanyKey(name){
+  return String(name || '').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function careerUrlFor(company){
+  const fromApi = String(company && company.c || '').trim();
+  if(fromApi) return fromApi;
+  if(!careerUrlMap) return '';
+  return careerUrlMap[normalizeCompanyKey(company && company.n)] || '';
+}
+
+function setLocalCareerUrl(companyName, url){
+  const key = normalizeCompanyKey(companyName);
+  if(!careerUrlMap) careerUrlMap = {};
+  careerUrlMap[key] = url;
+  const company = companies.find(c => normalizeCompanyKey(c.n) === key);
+  if(company) company.c = url;
+}
+
+async function ensureCareerUrlMap(){
+  if(careerUrlMap) return careerUrlMap;
+  if(careerUrlMapLoading) return careerUrlMapLoading;
+  careerUrlMapLoading = fetch('./career-urls.json', { cache: 'no-store' })
+    .then(res => res.ok ? res.json() : {})
+    .then(data => {
+      const map = {};
+      Object.keys(data || {}).forEach(name => {
+        const url = String(data[name] || '').trim();
+        if(name && url) map[normalizeCompanyKey(name)] = url;
+      });
+      careerUrlMap = map;
+      return map;
+    })
+    .catch(() => {
+      careerUrlMap = {};
+      return careerUrlMap;
+    })
+    .finally(() => { careerUrlMapLoading = null; });
+  return careerUrlMapLoading;
+}
+
+function linkedInPeopleSearchUrl(companyName, role){
+  const q = `${role} ${companyName} Hyderabad`;
+  return `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(q)}`;
+}
+
+function hrSearchUrl(companyName){
+  return linkedInPeopleSearchUrl(companyName, 'HR OR recruiter OR "Talent Acquisition" OR "People Operations"');
+}
+
+function ctoSearchUrl(companyName){
+  return linkedInPeopleSearchUrl(companyName, 'CTO OR "Chief Technology Officer" OR "VP Engineering" OR "Head of Engineering"');
+}
+
+function toggleCareerLinkEdit(companyName){
+  careerEditCompany = careerEditCompany === companyName ? null : companyName;
+  if(careerEditCompany) careerHrCompany = null;
+  renderCareers();
+  if(careerEditCompany){
+    setTimeout(() => {
+      const el = document.getElementById('career-url-input');
+      if(el){ el.focus(); el.select(); }
+    }, 30);
+  }
+}
+
+function toggleCareerHrForm(companyName, personName){
+  const opening = careerHrCompany !== companyName;
+  careerHrCompany = opening ? companyName : null;
+  if(careerHrCompany) careerEditCompany = null;
+  renderCareers();
+  if(careerHrCompany){
+    setTimeout(() => {
+      const nameEl = document.getElementById('career-hr-name');
+      if(personName && nameEl) nameEl.value = personName;
+      const person = personName
+        ? contactsFor(companyName).find(p => normalizeCompanyKey(p.name) === normalizeCompanyKey(personName))
+        : null;
+      if(person){
+        const phoneEl = document.getElementById('career-hr-phone');
+        const emailEl = document.getElementById('career-hr-email');
+        if(phoneEl) phoneEl.value = person.phone || '';
+        if(emailEl) emailEl.value = person.email || '';
+      }
+      if(nameEl) nameEl.focus();
+    }, 30);
+  }
+}
+
+function renderCareerLinkEditor(companyName, currentUrl){
+  if(careerEditCompany !== companyName) return '';
+  return `
+    <div class="add-form career-edit-form">
+      <div class="field">
+        <label for="career-url-input">Careers page URL</label>
+        <input type="url" id="career-url-input" value="${escapeHtml(currentUrl)}" placeholder="https://company.com/careers" autocomplete="off">
+      </div>
+      <p class="form-note" id="career-url-note">Correct a wrong link so everyone benefits.</p>
+      <div class="confirm-row" style="margin-top:8px;">
+        <button class="btn btn-ghost" type="button" onclick="toggleCareerLinkEdit(${attrJson(companyName)})">Cancel</button>
+        <button class="btn btn-primary" type="button" id="career-url-save" onclick="submitCareerUrl(${attrJson(companyName)})">Save link</button>
+      </div>
+    </div>`;
+}
+
+function renderCareerHrForm(companyName){
+  if(careerHrCompany !== companyName) return '';
+  return `
+    <div class="add-form career-hr-form">
+      <div class="field-row">
+        <div class="field">
+          <label for="career-hr-name">HR / recruiter name</label>
+          <input type="text" id="career-hr-name" placeholder="Full name" autocomplete="name">
+        </div>
+        <div class="field">
+          <label for="career-hr-role">Role</label>
+          <input type="text" id="career-hr-role" value="HR" placeholder="HR, Recruiter, TA…" autocomplete="organization-title">
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="career-hr-phone">Phone</label>
+          <input type="tel" id="career-hr-phone" placeholder="Phone number" autocomplete="tel">
+        </div>
+        <div class="field">
+          <label for="career-hr-email">Email</label>
+          <input type="email" id="career-hr-email" placeholder="name@company.com" autocomplete="email">
+        </div>
+      </div>
+      <label class="confirm-row" style="margin:10px 0;">
+        <input type="checkbox" id="career-hr-confirm">
+        <span>I confirm this is a real contact I am sharing with the community, and I have permission to share it.</span>
+      </label>
+      <p class="form-note" id="career-hr-note">If this person already exists for the company, phone and email will be updated.</p>
+      <div class="confirm-row">
+        <button class="btn btn-ghost" type="button" onclick="toggleCareerHrForm(${attrJson(companyName)})">Cancel</button>
+        <button class="btn btn-primary" type="button" id="career-hr-save" onclick="submitCareerHr(${attrJson(companyName)})">Save HR contact</button>
+      </div>
+    </div>`;
+}
+
+function renderCareerHrBlock(companyName){
+  const people = contactsFor(companyName);
+  const list = people.length ? `
+    <div class="existing-contacts">
+      ${people.map(p => `
+        <div class="person-card">
+          <div>
+            <div class="who">${escapeHtml(p.name)}${p.role ? ` <span class="company-tags">· ${escapeHtml(p.role)}</span>` : ''}</div>
+            ${contactActions(p, companyName)}
+            <div style="margin-top:6px;">
+              <button class="btn btn-ghost" type="button" style="padding:4px 10px;font-size:12px;" onclick="toggleCareerHrForm(${attrJson(companyName)}, ${attrJson(p.name)})">Update</button>
+            </div>
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  ` : `<div class="no-people">No HR / referral contacts logged yet.</div>`;
+
+  return `
+    <div class="panel" style="border-top:none; margin-top:12px; padding-top:0;">
+      <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <div style="font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--text-dim);">Community / HR contacts</div>
+        <button class="btn btn-ghost" type="button" style="padding:6px 12px;" onclick="toggleCareerHrForm(${attrJson(companyName)})">
+          <i class="fa-solid fa-user-plus" aria-hidden="true"></i> Add / update HR
+        </button>
+      </div>
+      ${list}
+      ${renderCareerHrForm(companyName)}
+    </div>`;
+}
+
+async function submitCareerUrl(companyName){
+  if(careerSaving) return;
+  const input = document.getElementById('career-url-input');
+  const note = document.getElementById('career-url-note');
+  const saveBtn = document.getElementById('career-url-save');
+  const url = String(input && input.value || '').trim();
+  if(!/^https?:\/\//i.test(url)){
+    showToast('Enter a full URL starting with http:// or https://');
+    return;
+  }
+  careerSaving = true;
+  if(saveBtn) saveBtn.disabled = true;
+  if(note) note.textContent = 'Saving careers link…';
+  try{
+    const json = await contactApi('saveCareerUrl', { company: companyName, url });
+    if(json.error) throw new Error(json.error);
+    setLocalCareerUrl(companyName, json.url || url);
+    careerEditCompany = null;
+    careerSaving = false;
+    renderCareers();
+    showToast(`Updated careers link for ${companyName}`);
+  }catch(err){
+    careerSaving = false;
+    if(saveBtn) saveBtn.disabled = false;
+    if(note) note.textContent = 'Correct a wrong link so everyone benefits.';
+    showToast('Could not save link: ' + err.message);
+  }
+}
+
+async function submitCareerHr(companyName){
+  if(careerHrSaving) return;
+  const name = String(document.getElementById('career-hr-name')?.value || '').trim();
+  const phone = String(document.getElementById('career-hr-phone')?.value || '').trim();
+  const email = String(document.getElementById('career-hr-email')?.value || '').trim();
+  const role = String(document.getElementById('career-hr-role')?.value || 'HR').trim() || 'HR';
+  const confirmed = !!document.getElementById('career-hr-confirm')?.checked;
+  const note = document.getElementById('career-hr-note');
+  const saveBtn = document.getElementById('career-hr-save');
+
+  if(!name || !phone || !email){
+    showToast('Fill in HR name, phone, and email');
+    return;
+  }
+  if(!confirmed){
+    showToast('Please confirm you can share this contact');
+    return;
+  }
+
+  careerHrSaving = true;
+  if(saveBtn) saveBtn.disabled = true;
+  if(note) note.textContent = 'Saving HR contact…';
+  try{
+    const json = await contactApi('saveHrContact', { company: companyName, name, phone, email, role, confirmed: true });
+    if(json.error) throw new Error(json.error);
+    if(!ledger[companyName]) ledger[companyName] = [];
+    const existing = ledger[companyName].find(p => normalizeCompanyKey(p.name) === normalizeCompanyKey(name));
+    if(existing){
+      existing.phone = phone;
+      existing.email = email;
+      existing.role = role;
+      existing.ts = Date.now();
+    }else{
+      ledger[companyName].push({ name, phone, email, role, address: '', ts: Date.now() });
+    }
+    careerHrCompany = null;
+    careerHrSaving = false;
+    updateKicker();
+    renderCareers();
+    showToast(json.updated ? `Updated ${name} for ${companyName}` : `Saved ${name} for ${companyName}`);
+  }catch(err){
+    careerHrSaving = false;
+    if(saveBtn) saveBtn.disabled = false;
+    if(note) note.textContent = 'If this person already exists for the company, phone and email will be updated.';
+    showToast('Could not save HR contact: ' + err.message);
+  }
+}
+
+function renderCareers(){
+  const query = document.getElementById('searchInputCareer').value;
+  const resultsEl = document.getElementById('resultsCareer');
+  const metaEl = document.getElementById('searchMetaCareer');
+  const q = query.trim().toLowerCase();
+
+  ensureCareerUrlMap().then(() => {
+    if(document.getElementById('careerView').style.display !== 'none') paintCareers(q, resultsEl, metaEl);
+  });
+  paintCareers(q, resultsEl, metaEl);
+}
+
+function paintCareers(q, resultsEl, metaEl){
+  const sorted = companies.slice().sort((a,b)=>a.n.localeCompare(b.n));
+  const matches = sorted.filter(c => {
+    if(!q) return true;
+    if(c.n.toLowerCase().includes(q)) return true;
+    return contactsFor(c.n).some(p =>
+      String(p.name || '').toLowerCase().includes(q) ||
+      String(p.email || '').toLowerCase().includes(q) ||
+      String(p.phone || '').toLowerCase().includes(q)
+    );
+  });
+  const withLink = matches.filter(c => careerUrlFor(c));
+  const withoutLink = matches.filter(c => !careerUrlFor(c));
+  const withHr = matches.filter(c => contactsFor(c.n).length > 0).length;
+
+  metaEl.textContent = `${matches.length} compan${matches.length === 1 ? 'y' : 'ies'}${q ? ' matching' : ''}`
+    + `${withLink.length ? ` · ${withLink.length} career link${withLink.length === 1 ? '' : 's'}` : ''}`
+    + `${withHr ? ` · ${withHr} with contacts` : ''}`;
+
+  if(!matches.length){
+    resultsEl.innerHTML = `<div class="empty-state"><div class="glyph">🧳</div><p>No companies match your search.</p></div>`;
+    return;
+  }
+
+  const card = c => {
+    const url = careerUrlFor(c);
+    const people = contactsFor(c.n);
+    return `
+      <div class="company-row">
+        <div class="company-head" style="cursor:default;">
+          <div class="company-info">
+            <h3>${escapeHtml(c.n)}</h3>
+            <div class="company-tags">${escapeHtml(c.s)} · ${escapeHtml(c.t)}</div>
+            <div class="company-address"><i class="fa-solid fa-location-dot" aria-hidden="true"></i> ${escapeHtml(c.a || 'Location not provided')}</div>
+          </div>
+          <div class="company-actions career-actions-row">
+            ${url ? `
+              <a class="btn btn-primary" href="${escapeHtml(url)}" target="_blank" rel="noopener" title="Open ${escapeHtml(c.n)} careers" aria-label="Open ${escapeHtml(c.n)} careers">
+                <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Careers
+              </a>
+            ` : `
+              <span class="btn btn-ghost" style="cursor:default;opacity:.7;" title="No careers link yet">No link</span>
+            `}
+            <button class="btn btn-ghost" type="button" onclick="toggleCareerLinkEdit(${attrJson(c.n)})" title="Edit careers URL">
+              <i class="fa-solid fa-pen" aria-hidden="true"></i> Edit link
+            </button>
+            <a class="btn btn-ghost" href="${escapeHtml(hrSearchUrl(c.n))}" target="_blank" rel="noopener" title="Search LinkedIn for HR at ${escapeHtml(c.n)}" aria-label="Find HR on LinkedIn for ${escapeHtml(c.n)}">
+              <i class="fa-brands fa-linkedin" aria-hidden="true"></i> HR
+            </a>
+            <a class="btn btn-ghost" href="${escapeHtml(ctoSearchUrl(c.n))}" target="_blank" rel="noopener" title="Search LinkedIn for CTO at ${escapeHtml(c.n)}" aria-label="Find CTO on LinkedIn for ${escapeHtml(c.n)}">
+              <i class="fa-brands fa-linkedin" aria-hidden="true"></i> CTO
+            </a>
+            <span class="contact-count">${people.length} contact${people.length === 1 ? '' : 's'}</span>
+          </div>
+        </div>
+        ${renderCareerLinkEditor(c.n, url)}
+        ${renderCareerHrBlock(c.n)}
+      </div>`;
+  };
+
+  resultsEl.innerHTML = `
+    ${withLink.length ? `<div class="career-section">${withLink.map(card).join('')}</div>` : ''}
+    ${withoutLink.length ? `
+      <div class="career-section" style="margin-top:18px;opacity:.85;">
+        <h4 style="font-family:'Fraunces',serif;font-size:15px;margin:0 0 10px;color:var(--text-dim);font-weight:600;">Companies without a careers link</h4>
+        ${withoutLink.map(card).join('')}
+      </div>
+    ` : ''}
+  `;
 }
 
 /* ---------- RESUMES TAB ---------- */

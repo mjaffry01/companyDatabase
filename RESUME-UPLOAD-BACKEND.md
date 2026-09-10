@@ -27,7 +27,7 @@ backend accept uploads.
   status, file name, Drive link, submitter, timestamp) is logged to a **"Resumes"** sheet
   tab (auto-created).
 - A new `uploadResume` action wired into `doPost`, requiring the same
-  `isApproved(email)` check as `companies`/`contacts`/`addContact`.
+  `isApproved(email)` check as `companies`/`contacts`/`addReferrerContact`.
 
 ## `appsscript.json`
 
