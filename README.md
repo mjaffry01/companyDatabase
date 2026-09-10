@@ -18,7 +18,7 @@ index.html (+ auth.js, auth-config.js)         apps-script/Code.gs
                                                        |
                                                        v
                                           Google Sheet "Jobfinder"
-                                          (Company Directory / ShiaContacts /
+                                          (Company Directory / ReferrerContact /
                                            Members / Resumes tabs)
                                                        |
                                                        v
@@ -50,10 +50,20 @@ index.html (+ auth.js, auth-config.js)         apps-script/Code.gs
   welcome email is sent). Set `ADMIN_EMAIL` in Apps Script Script properties and run
   `setupAutoApprovalTrigger` once to enable notifications.
 - **Data lives in Google, not in this repo**: the "Jobfinder" Google Sheet
-  (`SPREADSHEET_ID` in `Code.gs`) holds `Company Directory`, `ShiaContacts` (contacts),
+  (`SPREADSHEET_ID` in `Code.gs`) holds `Company Directory`, `ReferrerContact` (referrer contacts; legacy tab name `ShiaContacts`),
   `Members` (approved sign-ins), and `Resumes` (resume-upload log) tabs. Resume files
   themselves land in a Drive folder named "Professional Resumes Raw Data" (auto-created
   by the script), owned by whichever account deployed the script.
+- **Resume uploads are Word-only** (`.doc`/`.docx`; a Google Doc link is still accepted
+  as an alternative to a file). A member can see and remove their own past uploads from
+  the Resumes tab (`myResumes`/`deleteResume` actions) — deleting trashes the Drive file
+  and clears the matching `resumen Analysis` row; only the original submitter can delete.
+- **Careers tab** lists every Company Directory entry with its careers-page link (from
+  the `careerOpportunities` sheet, editable by any member via `saveCareerUrl`), LinkedIn
+  HR/CTO search shortcuts, and an HR/referral contact list (`saveHrContact`). Adding a
+  company under Add a Referrer (`addCompany`) also tries to auto-discover its careers URL
+  via the same Gemini/OpenAI setup as resume analysis, falling back to a Google search
+  link if nothing confident is found.
 - `deprecated-firebase-backend/` is dead code from an earlier Firebase-based attempt
   (abandoned because it needed a paid Blaze plan). Not used, kept only for reference.
 

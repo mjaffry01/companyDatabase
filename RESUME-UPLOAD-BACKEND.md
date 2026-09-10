@@ -2,9 +2,15 @@
 
 The frontend now has a third tab, "Resumes", where job seekers (recent graduates or
 people who have recently lost their job — not people looking to switch) upload a resume
-in `.doc`/`.docx`, `.pdf` or `.html`/`.htm` format (up to 5 MB), or paste a link to a
-**Google Doc** instead of uploading a file. It is gated behind the same Google sign-in +
-admin approval as the rest of the app.
+in `.doc`/`.docx` format only (up to 5 MB), or paste a link to a **Google Doc** instead of
+uploading a file. It is gated behind the same Google sign-in + admin approval as the rest
+of the app.
+
+A member can also see and remove the resumes they submitted: `myResumes` lists their own
+uploads (matched on the "Submitted by" column, not the candidate email, so no one sees or
+deletes another member's upload), and `deleteResume` trashes the Drive file, removes the
+Resumes row, and clears the matching `resumen Analysis` row if one exists - rejecting the
+request if the caller isn't the original submitter.
 
 Like [ADDRESS-BACKEND.md](ADDRESS-BACKEND.md), the deployed Apps Script source is not in
 this repository, so adding the code to `apps-script/Code.gs` alone does not make the live
@@ -12,7 +18,10 @@ backend accept uploads.
 
 ## What was added to `apps-script/Code.gs`
 
-- `RESUME_FOLDER_NAME`, `RESUME_MAX_BYTES`, `RESUME_ALLOWED_EXTENSIONS` constants.
+- `RESUME_FOLDER_NAME`, `RESUME_MAX_BYTES` constants, plus `RESUME_UPLOAD_ALLOWED_EXTENSIONS`
+  (`.doc`/`.docx` only - what `uploadResume` enforces) kept separate from the broader
+  `RESUME_ALLOWED_EXTENSIONS` (adds PDF/HTML) that Resume Fit's one-off JD comparisons
+  still use.
 - `uploadResume(submitterEmail, data)` — validates name/email/status/declaration, then
   branches on which of two inputs was sent:
   - **File upload**: checks the file extension against the allow-list, decodes the
@@ -26,8 +35,8 @@ backend accept uploads.
   (created on first use via `getOrCreateResumeFolder()`) and a row (name, email, phone,
   status, file name, Drive link, submitter, timestamp) is logged to a **"Resumes"** sheet
   tab (auto-created).
-- A new `uploadResume` action wired into `doPost`, requiring the same
-  `isApproved(email)` check as `companies`/`contacts`/`addContact`.
+- `uploadResume`, `myResumes`, and `deleteResume` actions wired into `doPost`, all
+  requiring the same `isApproved(email)` check as `companies`/`contacts`/`addReferrerContact`.
 
 ## `appsscript.json`
 

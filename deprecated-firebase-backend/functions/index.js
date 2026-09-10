@@ -6,7 +6,7 @@ initializeApp();
 const db = getFirestore();
 const sheets = google.sheets({version:'v4', auth:new google.auth.GoogleAuth({scopes:['https://www.googleapis.com/auth/spreadsheets']})});
 const spreadsheetId = process.env.SPREADSHEET_ID;
-const contactsRange = "'ShiaContacts'!A:H";
+const contactsRange = "'ReferrerContact'!A:H";
 async function rows(range){
   const result = await sheets.spreadsheets.values.get({spreadsheetId, range});
   return result.data.values || [];
@@ -46,7 +46,7 @@ exports.contactApi = onCall({region:'us-central1',maxInstances:2}, async request
     }
     return {contacts};
   }
-  if(action === 'addContact'){
+  if(action === 'addReferrerContact' || action === 'addContact'){
     const p = request.data;
     const company=text(p.company), name=text(p.name,150), phone=text(p.phone,40), email=text(p.email,254), address=text(p.address);
     if(!company || !name || !phone || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || p.confirmed !== true) throw new HttpsError('invalid-argument','Complete your contact details and declaration.');

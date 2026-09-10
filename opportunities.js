@@ -78,6 +78,36 @@ opportunityText.addEventListener('paste', event => {
 opportunityText.addEventListener('keydown', event => {
   if(event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.isComposing){ event.preventDefault(); document.getElementById('opportunityComposer').requestSubmit(); }
 });
+function renderOpportunityAnalysis(item, bubble){
+  const analysis = item && item.analysis;
+  if(!analysis) return;
+  const box = document.createElement('div');
+  box.className = 'opportunity-analysis';
+  const title = document.createElement('strong');
+  title.textContent = 'AI requirements' + (analysis.status ? ' · ' + analysis.status : '');
+  box.append(title);
+
+  const addField = (label, value) => {
+    const p = document.createElement('p');
+    const span = document.createElement('span');
+    span.textContent = label;
+    p.append(span, document.createTextNode(value));
+    box.append(p);
+  };
+
+  addField(
+    'Years of experience',
+    analysis.yearsExperience === null || analysis.yearsExperience === undefined || analysis.yearsExperience === ''
+      ? 'Not stated'
+      : String(analysis.yearsExperience)
+  );
+  addField('Technical skills', (analysis.technicalSkills || []).join('; ') || 'None listed');
+  addField('Non-technical skills', (analysis.nonTechnicalSkills || []).join('; ') || 'None listed');
+  if(analysis.experienceBasis) addField('Experience basis', analysis.experienceBasis);
+  if((analysis.reviewNotes || []).length) addField('Review notes', (analysis.reviewNotes || []).join(' '));
+  bubble.append(box);
+}
+
 function renderOpportunities(items){
   const root = document.getElementById('opportunityMessages'); root.replaceChildren();
   if(!items.length){ root.textContent = 'Your opportunities will appear here once you send them.'; return; }
@@ -88,6 +118,7 @@ function renderOpportunities(items){
     const list = document.createElement('ul');
     (item.files || []).forEach(file => { const li = document.createElement('li'); li.textContent = file.name; list.append(li); });
     if(list.children.length) bubble.append(list);
+    renderOpportunityAnalysis(item, bubble);
     const saved = document.createElement('small'); saved.textContent = 'Saved to Professional Opportunity'; bubble.append(saved); root.append(bubble);
   });
   root.scrollTop = root.scrollHeight;
@@ -112,7 +143,7 @@ document.getElementById('opportunityComposer').addEventListener('submit', async 
   if(text.length > 20000){ opportunityStatus.textContent = 'Please keep the message under 20,000 characters.'; return; }
   const session = opportunitySession;
   opportunitySaving = true; document.getElementById('opportunityFields').disabled = true;
-  opportunityStatus.textContent = 'Saving to Google Drive...';
+  opportunityStatus.textContent = 'Saving to Google Drive and decomposing with AI...';
   opportunityRequestId ||= crypto.randomUUID();
   try{
     const files = await Promise.all(opportunityFiles.map(async file => ({name:file.name, dataBase64:await fileToBase64(file)})));
@@ -121,7 +152,9 @@ document.getElementById('opportunityComposer').addEventListener('submit', async 
     if(session !== opportunitySession) return;
     if(!result.ok) throw new Error('The server did not confirm the save.');
     opportunityText.value = ''; opportunityFiles = []; opportunityRequestId = null; renderOpportunityAttachments();
-    opportunityStatus.textContent = 'Saved to Professional Opportunity. You can send another opportunity.';
+    opportunityStatus.textContent = result.opportunity?.analysis
+      ? ('Saved. AI status: ' + (result.opportunity.analysis.status || 'Complete') + '. You can send another opportunity.')
+      : 'Saved to Professional Opportunity. You can send another opportunity.';
     await loadOpportunities();
   }catch(error){ if(session === opportunitySession) opportunityStatus.textContent = 'Could not save: ' + error.message + ' Your message and attachments are still here. Retry Send opportunity.'; }
   finally{ if(session === opportunitySession){ opportunitySaving = false; document.getElementById('opportunityFields').disabled = !opportunityProfile?.canPost; } }

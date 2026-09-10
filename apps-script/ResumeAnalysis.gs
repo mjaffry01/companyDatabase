@@ -125,6 +125,16 @@ function writeResumeAnalysisById(fileId, values){
   }finally{ lock.releaseLock(); }
 }
 
+// Called by deleteResume (Code.gs) so removing a resume also clears its analysis row, if any.
+function removeResumeAnalysisById(fileId){
+  const lock = LockService.getScriptLock(); lock.waitLock(15000);
+  try{
+    const sheet = resumeAnalysisSheet();
+    const index = sheet.getDataRange().getValues().findIndex((r,i) => i > 0 && r[8] === fileId);
+    if(index >= 0) sheet.deleteRow(index + 1);
+  }finally{ lock.releaseLock(); }
+}
+
 function validateResumeAnalysis(value){
   if(!value || typeof value !== 'object') throw new Error('Invalid analysis response.');
   ['name','email','experienceBasis'].forEach(key => { if(typeof value[key] !== 'string' || value[key].length > 5000) throw new Error('Invalid analysis field.'); });

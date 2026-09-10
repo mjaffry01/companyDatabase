@@ -8,6 +8,10 @@
 .opportunity-message small{color:var(--text-dim)}
 .opportunity-message ul{padding-left:20px}
 .opportunity-message a{color:var(--teal-dark)}
+.opportunity-analysis{margin-top:12px;padding-top:10px;border-top:1px dashed #c0d6cb}
+.opportunity-analysis strong{display:block;margin-bottom:8px;font-size:13px}
+.opportunity-analysis p{margin:6px 0;font-size:13px;line-height:1.45}
+.opportunity-analysis span{display:block;font-size:11px;letter-spacing:.04em;text-transform:uppercase;color:var(--text-dim);margin-bottom:2px}
 .opportunity-composer fieldset{border:0;padding:0;margin:0;min-width:0}
 .opportunity-composer label{display:block;font-size:13px;margin:8px 0}
 .opportunity-composer textarea{width:100%;resize:vertical;min-height:100px;padding:12px;border:1px solid var(--paper-line);border-radius:10px;font:inherit;background:#fff}

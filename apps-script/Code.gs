@@ -47,6 +47,10 @@ const RESUMES_SHEET = 'Resumes';
 const RESUME_FOLDER_NAME = 'Professional Resumes Raw Data';
 const RESUME_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 const RESUME_ALLOWED_EXTENSIONS = { pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', html: 'text/html', htm: 'text/html' };
+// The Resumes tab (uploadResume) only accepts Word files - kept separate from
+// RESUME_ALLOWED_EXTENSIONS above, which Resume Fit's comparisonResumePart still
+// uses to accept PDF/HTML resumes for one-off JD comparisons.
+const RESUME_UPLOAD_ALLOWED_EXTENSIONS = { doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' };
 const COMPANY_HEADERS = { n: 'Company Name', s: 'Company Type', t: 'Size', a: 'Hyderabad Office Address', c: 'Careers Page URL' };
 const CAREER_SHEET_CANDIDATES = ['careerOpportunities', 'Career Opportunities', 'Careers URLs', 'Career URLs'];
 const CAREER_URL_HEADERS = ['Careers URL', 'Careers Page URL', 'Career URL', 'URL'];
@@ -90,6 +94,8 @@ function doPost(e){
         ? uploadResumeAndAnalyze(email, body)
         : uploadResume(email, body));
     }
+    if(action === 'myResumes') return json({ resumes: myResumes(email) });
+    if(action === 'deleteResume') return json(deleteResume(email, body));
     if(action === 'opportunityProfile') return json({ profile: getOpportunityProfile(email) });
     if(action === 'profile') return json({ profile: getUserProfile(email, payload.name) });
     if(action === 'saveWorkStatus') return json(saveWorkStatus(email, body.workStatus, payload.name));
@@ -836,9 +842,9 @@ function uploadResume(submitterEmail, data){
         throw new Error('Choose a resume file to upload.');
       }
       const extension = getFileExtension(fileName);
-      const mimeType = RESUME_ALLOWED_EXTENSIONS[extension];
+      const mimeType = RESUME_UPLOAD_ALLOWED_EXTENSIONS[extension];
       if(!mimeType){
-        throw new Error('Only .doc, .docx, .pdf and .html/.htm resumes are accepted.');
+        throw new Error('Only .doc and .docx resumes are accepted.');
       }
       let bytes;
       try{
@@ -865,6 +871,65 @@ function uploadResume(submitterEmail, data){
   }finally{
     lock.releaseLock();
   }
+}
+
+function driveFileIdFromUrl_(url){
+  const match = /\/d\/([a-zA-Z0-9_-]+)/.exec(String(url || ''));
+  return match ? match[1] : '';
+}
+
+// Only the resumes a member submitted themselves - matched on the "Submitted by"
+// column, not the candidate email, so someone can't list resumes they didn't upload.
+function myResumes(submitterEmail){
+  const sheet = ss().getSheetByName(RESUMES_SHEET);
+  if(!sheet) return [];
+  const target = String(submitterEmail || '').trim().toLowerCase();
+  return sheet.getDataRange().getValues().slice(1)
+    .filter(row => String(row[7] || '').trim().toLowerCase() === target)
+    .map(row => ({
+      timestamp: row[0] ? String(row[0]) : '',
+      name: String(row[1] || ''),
+      email: String(row[2] || ''),
+      phone: String(row[3] || ''),
+      status: String(row[4] || ''),
+      fileName: String(row[5] || ''),
+      driveUrl: String(row[6] || '')
+    }));
+}
+
+// Deletes a resume the caller submitted: trashes the Drive file, removes the
+// Resumes row, and clears the matching resumen Analysis row if one exists.
+function deleteResume(submitterEmail, data){
+  const driveUrl = clampText(data.driveUrl, 500);
+  if(!driveUrl) throw new Error('Missing resume to remove.');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  let fileId = '';
+  try{
+    const sheet = ss().getSheetByName(RESUMES_SHEET);
+    if(!sheet) throw new Error('No resumes found.');
+    const values = sheet.getDataRange().getValues();
+    let rowIndex = -1;
+    for(let i = 1; i < values.length; i++){
+      if(String(values[i][6] || '').trim() === driveUrl){ rowIndex = i; break; }
+    }
+    if(rowIndex < 0) throw new Error('That resume was not found.');
+    const submittedBy = String(values[rowIndex][7] || '').trim().toLowerCase();
+    if(submittedBy !== String(submitterEmail || '').trim().toLowerCase()){
+      throw new Error('You can only remove resumes you submitted.');
+    }
+    fileId = driveFileIdFromUrl_(driveUrl);
+    sheet.deleteRow(rowIndex + 1);
+  }finally{
+    lock.releaseLock();
+  }
+  if(fileId){
+    try{ DriveApp.getFileById(fileId).setTrashed(true); }catch(error){ console.error('Could not trash resume file', error); }
+    if(typeof removeResumeAnalysisById === 'function'){
+      try{ removeResumeAnalysisById(fileId); }catch(error){ console.error('Could not remove analysis row', error); }
+    }
+  }
+  return { ok: true };
 }
 
 // ---- Professional Opportunity inbox ----
