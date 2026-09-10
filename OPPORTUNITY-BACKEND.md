@@ -18,6 +18,36 @@ are stored on the opportunity JSON, shown in the Opportunities tab, and logged
 to an **Opportunity Analysis** sheet. If LLM properties are missing, the
 opportunity still saves and analysis status is `Awaiting LLM setup`.
 
+### Matching candidates to a posted opportunity
+
+Once an opportunity's requirements are extracted (status `Complete` or `Review
+needed`), `matchOpportunityToResumes_` (in `apps-script/ResumeAnalysis.gs`)
+scores every analyzed resume (the **resumen Analysis** sheet, same one
+`uploadResumeAndAnalyze` fills in on upload) against those requirements with a
+heuristic - no extra LLM call - that compares:
+
+- **Skills**: each opportunity skill is checked against the resume's skills
+  case-insensitively, matching whole tokens ("Node" matches "Node.js", "AWS"
+  matches "AWS (EC2, S3)"; "Java" does **not** match "JavaScript"). Technical
+  skills are weighted higher than non-technical skills.
+- **Years of experience**: the resume's years as a ratio of whatever the
+  opportunity requires (full credit when the opportunity states no minimum).
+
+The two are combined 70/30 (skills/experience) into a 0-100 score. Only the
+strongest resume per candidate email counts, and only scores at or above
+`OPPORTUNITY_MATCH_THRESHOLD` (60) qualify - capped to the top 25 matches so a
+vague posting can't fan out into unbounded emails. Matches are **not** written
+to the Opportunity Analysis sheet (no schema change needed); they're computed
+fresh each time and returned as `analysis.matches` on the opportunity record.
+
+For every match, `sendOpportunityMatchEmail_` emails the **candidate** (not
+the opportunity poster, and not any referral contact) a short note naming the
+company, their approximate match score, and the matched skills - a candidate
+email failure is logged and swallowed, never blocking the save. The person who
+posted the opportunity sees the matched candidates' names, scores and matched
+skills in the Opportunities tab, under the same AI-requirements panel (no
+candidate email addresses are shown there).
+
 Approved members can submit and reload their latest 100 submissions. The backend
 additionally requires the signed-in email to match the Email of a named contact
 in ReferrerContact before posting. Owner Email does not qualify: it may identify
@@ -39,7 +69,9 @@ records. Repeating an unchanged submission ID returns its existing result.
 ## Activate on the live site
 
 1. In the existing **standalone** Apps Script project, replace Code.gs with the
-   complete apps-script/Code.gs in this repository. Do not edit the older bound script.
+   complete apps-script/Code.gs in this repository, and ResumeAnalysis.gs with the
+   complete apps-script/ResumeAnalysis.gs (matching to resumes and the match emails
+   live entirely in that second file). Do not edit the older bound script.
 2. Save, then optionally run `setupProfessionalOpportunity` once to create the
    folder immediately. Otherwise the first successful submission creates it.
    The existing Drive and Sheets scopes suffice.

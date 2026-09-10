@@ -147,3 +147,75 @@ test('Gemini image OCR keeps the image mime type',()=>{
   assert.equal(text,'Backend JD');
   assert.equal(sent.contents[0].parts[0].inlineData.mimeType,'image/png');
 });
+
+// ---- Opportunity <-> resume matching ----
+const opportunityReq=(overrides={})=>({technicalSkills:['React','Node.js','AWS'],nonTechnicalSkills:['Leadership'],yearsExperience:4,...overrides});
+test('skill matching is case-insensitive and tolerant of suffixes like .js',()=>{
+  const c=setup();
+  assert.deepEqual(c.matchedSkillNames_(['React','AWS'],['react.js','Amazon Web Services']),['React']);
+  assert.equal(c.skillsFuzzyMatch_('node','node.js'),true);
+  assert.equal(c.skillsFuzzyMatch_('java','javascript'),false);
+});
+test('resumeMatchScore_ weighs technical skills, non-technical skills and years of experience',()=>{
+  const c=setup();
+  const strong=c.resumeMatchScore_(opportunityReq(),{technicalSkills:['React','Node.js','AWS'],nonTechnicalSkills:['Leadership'],yearsExperience:5});
+  assert.equal(strong.score,100);
+  assert.deepEqual(Array.from(strong.matchedSkills).sort(),['AWS','Leadership','Node.js','React'].sort());
+  const weak=c.resumeMatchScore_(opportunityReq(),{technicalSkills:['Excel'],nonTechnicalSkills:[],yearsExperience:0});
+  assert.ok(weak.score<40);
+  const noRequirement=c.resumeMatchScore_(opportunityReq({yearsExperience:null}),{technicalSkills:['React','Node.js','AWS'],nonTechnicalSkills:['Leadership'],yearsExperience:0});
+  assert.equal(noRequirement.score,100); // opportunity states no years requirement, so any resume years is fine
+});
+test('matchOpportunityToResumes_ only returns the best score per candidate, at or above the threshold, sorted highest first',()=>{
+  const c=setup();
+  const rows=[
+    Array(12).fill(''), // header
+    ['Strong Candidate','strong@example.com',5,'React; Node.js; AWS','Leadership','','','','id1','Complete','',''],
+    ['Weak Candidate','weak@example.com',0,'Excel','','','','','id2','Complete','',''],
+    ['Duplicate Upload','strong@example.com',1,'React','','','','','id3','Complete','',''], // same email, weaker resume - should not override the strong score
+    ['Unfinished','pending@example.com',5,'React; Node.js; AWS','Leadership','','','','id4','Processing','','']
+  ];
+  c.resumeAnalysisSheet=()=>({getDataRange:()=>({getValues:()=>rows})});
+  const matches=c.matchOpportunityToResumes_(opportunityReq());
+  assert.equal(matches.length,1);
+  assert.equal(matches[0].email,'strong@example.com');
+  assert.equal(matches[0].score,100);
+});
+test('matchOpportunityToResumes_ returns nothing when the opportunity stated no requirements at all, or the resume sheet cannot be read',()=>{
+  const c=setup();
+  assert.deepEqual(Array.from(c.matchOpportunityToResumes_({technicalSkills:[],nonTechnicalSkills:[],yearsExperience:null})),[]);
+  c.resumeAnalysisSheet=()=>{throw Error('sheet unavailable');};
+  assert.deepEqual(Array.from(c.matchOpportunityToResumes_(opportunityReq())),[]);
+});
+test('sendOpportunityMatchEmail_ emails the matched candidate with score and skills, and never throws',()=>{
+  const c=setup();const mails=[];
+  c.MailApp={sendEmail:(to,subject,body)=>mails.push({to,subject,body})};
+  c.sendOpportunityMatchEmail_({name:'Sam',email:'sam@example.com',score:82,matchedSkills:['React','AWS']},'Acme');
+  assert.equal(mails.length,1);
+  assert.equal(mails[0].to,'sam@example.com');
+  assert.match(mails[0].subject,/may match your resume/i);
+  assert.match(mails[0].body,/Acme/);
+  assert.match(mails[0].body,/82%/);
+  assert.match(mails[0].body,/React, AWS/);
+  c.MailApp={sendEmail:()=>{throw Error('quota exceeded');}};
+  assert.doesNotThrow(()=>c.sendOpportunityMatchEmail_({name:'Sam',email:'sam@example.com',score:82,matchedSkills:[]},'Acme'));
+});
+test('analyzePostedOpportunity matches resumes and emails winners once analysis completes',()=>{
+  const c=setup();const mails=[];
+  c.clampText=(value,max)=>String(value||'').trim().slice(0,max||500);
+  c.MailApp={sendEmail:(to,subject,body)=>mails.push({to,subject,body})};
+  c.PropertiesService={getScriptProperties:()=>({getProperty:key=>({RESUME_LLM_ENABLED:'true',RESUME_GEMINI_API_KEY:'k',RESUME_GEMINI_MODEL:'gemini-test'})[key]})};
+  c.callOpportunityAnalysisProviders=()=>({result:{yearsExperience:4,technicalSkills:['React'],nonTechnicalSkills:[],experienceBasis:'4 years required',reviewNotes:[]},method:'Gemini / gemini-test'});
+  c.opportunitySourcesToText=()=>'Need React, 4 years';
+  const rows=[Array(12).fill(''),['Sam','sam@example.com',5,'React','','','','','id1','Complete','','']];
+  c.resumeAnalysisSheet=()=>({getDataRange:()=>({getValues:()=>rows})});
+  const writes=[];
+  c.writeOpportunityAnalysisRow_=(email,requestId,company,payload,summary)=>writes.push({email,requestId,company,payload,summary});
+  const result=c.analyzePostedOpportunity('poster@example.com',{requestId:'req-1',company:'Acme',text:'Need React, 4 years'});
+  assert.equal(result.status,'Complete');
+  assert.equal(result.matches.length,1);
+  assert.equal(result.matches[0].email,'sam@example.com');
+  assert.equal(mails.length,1);
+  assert.equal(mails[0].to,'sam@example.com');
+  assert.deepEqual(writes[0].payload.matches[0].email,'sam@example.com'); // matches travel with the written payload, but are not part of the sheet's fixed columns
+});

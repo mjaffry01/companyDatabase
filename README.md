@@ -115,7 +115,10 @@ this project's history (see git log):
 - **Opportunities** tab: chat-style submission of text, Word, Excel, PDF and
   JPG/PNG images, including clipboard images. Stores originals and metadata in
   **Professional Opportunity** on Drive, with each member's latest 100 submissions
-  shown in their own history. AI processing is deferred. See
+  shown in their own history. AI processing is deferred. Once the AI extracts an
+  opportunity's required skills and years of experience, it's scored against every
+  analyzed resume; candidates scoring 60+ are emailed directly, and the poster sees
+  the matched names, scores and skills alongside the AI requirements. See
   `OPPORTUNITY-BACKEND.md` for the required separate backend deployment.
 
 - **Add a contact** tab: for people currently employed somewhere to share a contact

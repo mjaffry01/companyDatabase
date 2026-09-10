@@ -106,6 +106,24 @@ function renderOpportunityAnalysis(item, bubble){
   if(analysis.experienceBasis) addField('Experience basis', analysis.experienceBasis);
   if((analysis.reviewNotes || []).length) addField('Review notes', (analysis.reviewNotes || []).join(' '));
   bubble.append(box);
+
+  const matches = analysis.matches || [];
+  if(matches.length){
+    const matchBox = document.createElement('div');
+    matchBox.className = 'opportunity-matches';
+    const matchTitle = document.createElement('strong');
+    matchTitle.textContent = 'Matching candidates (' + matches.length + ')';
+    matchBox.append(matchTitle);
+    const list = document.createElement('ul');
+    matches.forEach(match => {
+      const li = document.createElement('li');
+      const skills = (match.matchedSkills || []).join(', ');
+      li.textContent = (match.name || 'A candidate') + ' — ' + match.score + '% match' + (skills ? ' (' + skills + ')' : '');
+      list.append(li);
+    });
+    matchBox.append(list);
+    bubble.append(matchBox);
+  }
 }
 
 function renderOpportunities(items){
@@ -152,8 +170,11 @@ document.getElementById('opportunityComposer').addEventListener('submit', async 
     if(session !== opportunitySession) return;
     if(!result.ok) throw new Error('The server did not confirm the save.');
     opportunityText.value = ''; opportunityFiles = []; opportunityRequestId = null; renderOpportunityAttachments();
+    const matchCount = result.opportunity?.analysis?.matches?.length || 0;
     opportunityStatus.textContent = result.opportunity?.analysis
-      ? ('Saved. AI status: ' + (result.opportunity.analysis.status || 'Complete') + '. You can send another opportunity.')
+      ? ('Saved. AI status: ' + (result.opportunity.analysis.status || 'Complete')
+        + (matchCount ? ' · ' + matchCount + ' matching candidate' + (matchCount === 1 ? '' : 's') + ' notified' : '')
+        + '. You can send another opportunity.')
       : 'Saved to Professional Opportunity. You can send another opportunity.';
     await loadOpportunities();
   }catch(error){ if(session === opportunitySession) opportunityStatus.textContent = 'Could not save: ' + error.message + ' Your message and attachments are still here. Retry Send opportunity.'; }

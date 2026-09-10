@@ -652,6 +652,13 @@ function analyzePostedOpportunity(email, data){
       status: notes.length ? 'Review needed' : 'Complete',
       method: analysis.method
     };
+    // Score every analyzed resume against these extracted requirements, email the
+    // candidates who clear the threshold, and hand the match list back so the
+    // poster sees who was notified (matches are not written to the sheet - only
+    // computed fresh each time an opportunity is posted).
+    const matches = matchOpportunityToResumes_(payload);
+    matches.forEach(match => sendOpportunityMatchEmail_(match, company));
+    payload.matches = matches;
     writeOpportunityAnalysisRow_(email, requestId, company, payload, sourceSummary);
     return payload;
   }catch(error){
@@ -688,6 +695,129 @@ function writeOpportunityAnalysisRow_(email, requestId, company, analysis, sourc
   ].map((value, index) => index === 0 ? value : analysisCell(value));
   sheet.appendRow(row);
   sheet.getRange(sheet.getLastRow(), 1, 1, OPP_ANALYSIS_HEADERS.length).setWrap(true).setVerticalAlignment('top');
+}
+
+// ---- Opportunity <-> resume matching ----
+// A posted opportunity's extracted requirements are compared against every
+// analyzed resume with a lightweight, no-extra-LLM-call heuristic: skill names
+// are matched case-insensitively (allowing "React" to match "React.js", etc.),
+// and years of experience is compared as a ratio. Anything scoring at or above
+// OPPORTUNITY_MATCH_THRESHOLD is treated as a match.
+const OPPORTUNITY_MATCH_THRESHOLD = 60;
+
+function normalizeSkillText_(skill){
+  return String(skill || '').trim().toLowerCase();
+}
+
+function escapeRegExp_(text){
+  return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+// True when `needle` appears in `haystack` as a whole skill token, not just
+// as a raw substring - e.g. "node" matches "node.js" (boundary is the dot),
+// but "java" must NOT match "javascript" (no boundary between them). Anything
+// but a letter/digit counts as a boundary, so "AWS" also matches
+// "AWS (EC2, S3)". Skips very short needles (<3 chars) to avoid noise.
+function containsWholeSkillToken_(haystack, needle){
+  if(needle.length < 3 || needle.length > haystack.length) return false;
+  return new RegExp('(^|[^a-z0-9])' + escapeRegExp_(needle) + '($|[^a-z0-9])').test(haystack);
+}
+
+// Two skill labels count as the same skill when equal, or when one is a
+// whole-token match inside the other ("Node" vs "Node.js", "AWS" vs
+// "AWS (EC2, S3)") - good enough for a heuristic match without spending an
+// LLM call per resume/opportunity pair.
+function skillsFuzzyMatch_(a, b){
+  if(!a || !b) return false;
+  if(a === b) return true;
+  return containsWholeSkillToken_(b, a) || containsWholeSkillToken_(a, b);
+}
+
+function matchedSkillNames_(requiredSkills, candidateSkills){
+  const candidateNormalized = (candidateSkills || []).map(normalizeSkillText_).filter(Boolean);
+  return (requiredSkills || []).filter(skill => {
+    const normalized = normalizeSkillText_(skill);
+    return normalized && candidateNormalized.some(candidate => skillsFuzzyMatch_(normalized, candidate));
+  });
+}
+
+// Heuristic 0-100 score: 70% weight on how much of the opportunity's technical
+// + non-technical skills the resume evidences (technical skills weighted
+// higher within that), 30% weight on years of experience versus whatever the
+// opportunity requires (full credit when the opportunity states no minimum).
+function resumeMatchScore_(opportunity, resume){
+  const oppTechnical = opportunity.technicalSkills || [];
+  const oppNonTechnical = opportunity.nonTechnicalSkills || [];
+  const matchedTechnical = matchedSkillNames_(oppTechnical, resume.technicalSkills);
+  const matchedNonTechnical = matchedSkillNames_(oppNonTechnical, resume.nonTechnicalSkills);
+
+  let skillScore;
+  if(oppTechnical.length || oppNonTechnical.length){
+    const techScore = oppTechnical.length ? matchedTechnical.length / oppTechnical.length : null;
+    const nonTechScore = oppNonTechnical.length ? matchedNonTechnical.length / oppNonTechnical.length : null;
+    skillScore = techScore !== null && nonTechScore !== null ? techScore * 0.8 + nonTechScore * 0.2
+      : (techScore !== null ? techScore : nonTechScore);
+  }else{
+    skillScore = 0.5; // Opportunity named no specific skills; let experience carry the score.
+  }
+
+  let experienceScore;
+  if(opportunity.yearsExperience === null || opportunity.yearsExperience === undefined){
+    experienceScore = 1;
+  }else{
+    const resumeYears = typeof resume.yearsExperience === 'number' ? resume.yearsExperience : 0;
+    experienceScore = opportunity.yearsExperience > 0 ? Math.min(1, resumeYears / opportunity.yearsExperience) : 1;
+  }
+
+  return {
+    score: Math.round((skillScore * 0.7 + experienceScore * 0.3) * 100),
+    matchedSkills: [...matchedTechnical, ...matchedNonTechnical]
+  };
+}
+
+// Reads every analyzed resume and scores it against a posted opportunity's
+// extracted requirements. Keeps only the strongest match per candidate email
+// (a person may have uploaded more than one resume) and only candidates
+// scoring at or above OPPORTUNITY_MATCH_THRESHOLD, capped to the top 25 so a
+// vague opportunity cannot fan out into an unbounded number of emails.
+function matchOpportunityToResumes_(opportunity){
+  if(!opportunity) return [];
+  const hasRequirements = (opportunity.technicalSkills || []).length || (opportunity.nonTechnicalSkills || []).length
+    || (opportunity.yearsExperience !== null && opportunity.yearsExperience !== undefined);
+  if(!hasRequirements) return [];
+  let rows;
+  try{ rows = resumeAnalysisSheet().getDataRange().getValues().slice(1); }
+  catch(error){ console.error('Could not read resumes for opportunity matching', error); return []; }
+  const best = new Map();
+  rows.forEach(row => {
+    const status = row[9];
+    if(status !== 'Complete' && status !== 'Review needed') return;
+    const email = String(row[1] || '').trim();
+    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return;
+    const resume = {
+      name: row[0] || '',
+      yearsExperience: typeof row[2] === 'number' ? row[2] : null,
+      technicalSkills: String(row[3] || '').split(';').map(s => s.trim()).filter(Boolean),
+      nonTechnicalSkills: String(row[4] || '').split(';').map(s => s.trim()).filter(Boolean)
+    };
+    const {score, matchedSkills} = resumeMatchScore_(opportunity, resume);
+    const key = email.toLowerCase();
+    const existing = best.get(key);
+    if(!existing || score > existing.score) best.set(key, {name: resume.name, email: email, score: score, matchedSkills: matchedSkills});
+  });
+  return [...best.values()].filter(match => match.score >= OPPORTUNITY_MATCH_THRESHOLD).sort((a, b) => b.score - a.score).slice(0, 25);
+}
+
+function sendOpportunityMatchEmail_(match, company){
+  try{
+    const skillsLine = match.matchedSkills.length ? match.matchedSkills.join(', ') : 'your background';
+    MailApp.sendEmail(match.email, 'A new opportunity may match your resume',
+      'Hi' + (match.name ? ' ' + match.name : '') + ',\n\n'
+      + 'A new opportunity' + (company ? ' at ' + company : '') + ' was just posted in the Company Contact Book, '
+      + 'and your resume looks like roughly a ' + match.score + '% match based on ' + skillsLine + '.\n\n'
+      + 'A member of the community may reach out to you about it directly. If you would like to update or remove '
+      + 'your resume, use the Resumes tab.\n\nWishing you all the best.\n\nIf you did not request this, please ignore this email.');
+  }catch(error){ console.error('Opportunity match email failed', error); }
 }
 
 // Owner-run recovery/backfill. Safe to rerun; completed rows are preserved.
