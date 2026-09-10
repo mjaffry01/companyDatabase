@@ -39,14 +39,17 @@ const CLIENT_ID = '414131434266-0kbpen3881ik4e32vjlucd63n3a4ssj9.apps.googleuser
 // (the old public backend) so that one is untouched until ready to retire it.
 const SPREADSHEET_ID = '1cgJ8wGEPkQW8QbrBuCqa9Z1Pcq62yma2R3N9YKoMSnk';
 const COMPANY_SHEET = 'Company Directory';
-const CONTACTS_SHEET = 'ShiaContacts';
+const CONTACTS_SHEET = 'ReferrerContact';
+const CONTACTS_SHEET_LEGACY = 'ShiaContacts';
 const MEMBERS_SHEET = 'Members';
 const AUTO_APPROVE_MINUTES = 3;
 const RESUMES_SHEET = 'Resumes';
 const RESUME_FOLDER_NAME = 'Professional Resumes Raw Data';
 const RESUME_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 const RESUME_ALLOWED_EXTENSIONS = { pdf: 'application/pdf', doc: 'application/msword', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', html: 'text/html', htm: 'text/html' };
-const COMPANY_HEADERS = { n: 'Company Name', s: 'Company Type', t: 'Size', a: 'Hyderabad Office Address' };
+const COMPANY_HEADERS = { n: 'Company Name', s: 'Company Type', t: 'Size', a: 'Hyderabad Office Address', c: 'Careers Page URL' };
+const CAREER_SHEET_CANDIDATES = ['careerOpportunities', 'Career Opportunities', 'Careers URLs', 'Career URLs'];
+const CAREER_URL_HEADERS = ['Careers URL', 'Careers Page URL', 'Career URL', 'URL'];
 
 function ss(){ return SpreadsheetApp.openById(SPREADSHEET_ID); }
 
@@ -77,8 +80,11 @@ function doPost(e){
       throw new Error('Administrator approval is required.');
     }
     if(action === 'companies') return json({ companies: getCompanies() });
+    if(action === 'addCompany') return json(addCompany(email, body));
     if(action === 'contacts') return json({ contacts: getContacts() });
-    if(action === 'addContact') return json(addContact(email, body));
+    if(action === 'addReferrerContact' || action === 'addContact') return json(addReferrerContact(email, body));
+    if(action === 'saveCareerUrl') return json(saveCareerUrl(email, body));
+    if(action === 'saveHrContact') return json(saveHrContact(email, body));
     if(action === 'uploadResume'){
       return json(typeof uploadResumeAndAnalyze === 'function'
         ? uploadResumeAndAnalyze(email, body)
@@ -284,6 +290,158 @@ function findHeaderRow(sheet, firstColumnValue){
   return -1;
 }
 
+function findCareerSheet_(){
+  const book = ss();
+  for(let i = 0; i < CAREER_SHEET_CANDIDATES.length; i++){
+    const sheet = book.getSheetByName(CAREER_SHEET_CANDIDATES[i]);
+    if(sheet) return sheet;
+  }
+  const sheets = book.getSheets();
+  for(let i = 0; i < sheets.length; i++){
+    const sheet = sheets[i];
+    if(String(sheet.getName()).toLowerCase() === String(COMPANY_SHEET).toLowerCase()) continue;
+    const headerRow = findHeaderRow(sheet, COMPANY_HEADERS.n);
+    if(headerRow === -1) continue;
+    const headers = sheet.getRange(headerRow, 1, 1, sheet.getLastColumn()).getValues()[0].map(h => String(h).trim());
+    if(CAREER_URL_HEADERS.some(h => headers.indexOf(h) >= 0)) return sheet;
+  }
+  return null;
+}
+
+function ensureCareerSheet_(){
+  let sheet = findCareerSheet_();
+  if(sheet) return sheet;
+  sheet = ss().insertSheet(CAREER_SHEET_CANDIDATES[0]);
+  sheet.getRange(1, 1, 1, 5).setValues([['Company Name', 'Careers URL', 'Source', 'Updated by', 'Updated at']]);
+  return sheet;
+}
+
+function careerSheetIndexes_(sheet){
+  const headerRow = findHeaderRow(sheet, COMPANY_HEADERS.n);
+  if(headerRow === -1) throw new Error('careerOpportunities sheet is missing a Company Name header.');
+  const lastCol = Math.max(sheet.getLastColumn(), 5);
+  const headers = sheet.getRange(headerRow, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
+  const nameIdx = headers.indexOf(COMPANY_HEADERS.n);
+  let urlIdx = -1;
+  for(let i = 0; i < CAREER_URL_HEADERS.length; i++){
+    urlIdx = headers.indexOf(CAREER_URL_HEADERS[i]);
+    if(urlIdx >= 0) break;
+  }
+  if(nameIdx < 0) throw new Error('careerOpportunities sheet needs a Company Name column.');
+  if(urlIdx < 0){
+    urlIdx = Math.max(1, headers.filter(Boolean).length);
+    sheet.getRange(headerRow, urlIdx + 1).setValue('Careers URL');
+  }
+  let sourceIdx = headers.indexOf('Source');
+  if(sourceIdx < 0){
+    sourceIdx = Math.max(urlIdx + 1, headers.filter(Boolean).length);
+    sheet.getRange(headerRow, sourceIdx + 1).setValue('Source');
+  }
+  let byIdx = headers.indexOf('Updated by');
+  if(byIdx < 0){
+    byIdx = Math.max(sourceIdx + 1, headers.filter(Boolean).length);
+    sheet.getRange(headerRow, byIdx + 1).setValue('Updated by');
+  }
+  let atIdx = headers.indexOf('Updated at');
+  if(atIdx < 0){
+    atIdx = Math.max(byIdx + 1, headers.filter(Boolean).length);
+    sheet.getRange(headerRow, atIdx + 1).setValue('Updated at');
+  }
+  return { headerRow, nameIdx, urlIdx, sourceIdx, byIdx, atIdx };
+}
+
+function isHttpUrl_(value){
+  return /^https?:\/\/[^\s]+$/i.test(String(value || '').trim());
+}
+
+function saveCareerUrl(ownerEmail, data){
+  const company = clampText(data.company, 200);
+  const url = clampText(data.url, 1000);
+  if(!company) throw new Error('Company name is required.');
+  if(!isHttpUrl_(url)) throw new Error('Enter a valid http(s) careers URL.');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try{
+    const sheet = ensureCareerSheet_();
+    const idx = careerSheetIndexes_(sheet);
+    const lastRow = sheet.getLastRow();
+    let rowNumber = -1;
+    if(lastRow > idx.headerRow){
+      const names = sheet.getRange(idx.headerRow + 1, idx.nameIdx + 1, lastRow - idx.headerRow, 1).getValues();
+      for(let i = 0; i < names.length; i++){
+        if(normalizeKey(names[i][0]) === normalizeKey(company)){
+          rowNumber = idx.headerRow + 1 + i;
+          break;
+        }
+      }
+    }
+    if(rowNumber < 0){
+      sheet.appendRow([]);
+      rowNumber = sheet.getLastRow();
+      sheet.getRange(rowNumber, idx.nameIdx + 1).setValue(company);
+    }
+    sheet.getRange(rowNumber, idx.urlIdx + 1).setValue(url);
+    sheet.getRange(rowNumber, idx.sourceIdx + 1).setValue('member-edit');
+    sheet.getRange(rowNumber, idx.byIdx + 1).setValue(ownerEmail);
+    sheet.getRange(rowNumber, idx.atIdx + 1).setValue(new Date());
+
+    // Keep Company Directory Careers Page URL in sync when that column exists.
+    const companySheet = ss().getSheetByName(COMPANY_SHEET);
+    if(companySheet){
+      const headerRow = findHeaderRow(companySheet, COMPANY_HEADERS.n);
+      if(headerRow !== -1){
+        const headers = companySheet.getRange(headerRow, 1, 1, companySheet.getLastColumn()).getValues()[0].map(h => String(h).trim());
+        const nameCol = headers.indexOf(COMPANY_HEADERS.n);
+        let careersCol = headers.indexOf(COMPANY_HEADERS.c);
+        if(careersCol < 0){
+          careersCol = headers.length;
+          companySheet.getRange(headerRow, careersCol + 1).setValue(COMPANY_HEADERS.c);
+        }
+        if(nameCol >= 0){
+          const last = companySheet.getLastRow();
+          if(last > headerRow){
+            const names = companySheet.getRange(headerRow + 1, nameCol + 1, last - headerRow, 1).getValues();
+            for(let i = 0; i < names.length; i++){
+              if(normalizeKey(names[i][0]) === normalizeKey(company)){
+                companySheet.getRange(headerRow + 1 + i, careersCol + 1).setValue(url);
+                break;
+              }
+            }
+          }
+        }
+      }
+    }
+    return { ok: true, company: company, url: url };
+  }finally{
+    lock.releaseLock();
+  }
+}
+
+function getCareerUrlMap(){
+  const sheet = findCareerSheet_();
+  if(!sheet) return {};
+  const headerRow = findHeaderRow(sheet, COMPANY_HEADERS.n);
+  if(headerRow === -1) return {};
+  const numRows = sheet.getLastRow() - headerRow + 1;
+  if(numRows < 2) return {};
+  const values = sheet.getRange(headerRow, 1, numRows, sheet.getLastColumn()).getValues();
+  const headers = values[0].map(h => String(h).trim());
+  const nameIdx = headers.indexOf(COMPANY_HEADERS.n);
+  let urlIdx = -1;
+  for(let i = 0; i < CAREER_URL_HEADERS.length; i++){
+    urlIdx = headers.indexOf(CAREER_URL_HEADERS[i]);
+    if(urlIdx >= 0) break;
+  }
+  if(nameIdx < 0 || urlIdx < 0) return {};
+  const map = {};
+  for(let i = 1; i < values.length; i++){
+    const name = String(values[i][nameIdx] || '').trim();
+    const url = String(values[i][urlIdx] || '').trim();
+    if(name && url) map[normalizeKey(name)] = url;
+  }
+  return map;
+}
+
 function getCompanies(){
   const sheet = ss().getSheetByName(COMPANY_SHEET);
   if(!sheet) throw new Error('"' + COMPANY_SHEET + '" sheet not found.');
@@ -297,40 +455,224 @@ function getCompanies(){
     n: headers.indexOf(COMPANY_HEADERS.n),
     s: headers.indexOf(COMPANY_HEADERS.s),
     t: headers.indexOf(COMPANY_HEADERS.t),
-    a: headers.indexOf(COMPANY_HEADERS.a)
+    a: headers.indexOf(COMPANY_HEADERS.a),
+    c: headers.indexOf(COMPANY_HEADERS.c)
   };
-  if(Object.keys(idx).some(key => idx[key] < 0)){
+  const requiredKeys = ['n','s','t','a'];
+  if(requiredKeys.some(key => idx[key] < 0)){
     throw new Error('Company Directory headers changed; update COMPANY_HEADERS in Code.gs.');
   }
+  const careerMap = getCareerUrlMap();
   const companies = [];
   for(let i = 1; i < values.length; i++){
     const row = values[i];
     if(!row[idx.n]) continue;
+    const name = String(row[idx.n]);
+    const fromColumn = idx.c >= 0 ? String(row[idx.c] || '').trim() : '';
+    const fromCareerSheet = careerMap[normalizeKey(name)] || '';
     companies.push({
-      n: String(row[idx.n]),
+      n: name,
       s: String(row[idx.s] || ''),
       t: String(row[idx.t] || ''),
-      a: String(row[idx.a] || '')
+      a: String(row[idx.a] || ''),
+      c: fromColumn || fromCareerSheet
     });
   }
   return companies;
 }
 
-// ---- Contacts ----
-const CONTACTS_HEADER = ['Company', 'Name', 'Phone', 'Email', 'Timestamp', 'Address', 'Owner Email', 'Contact ID'];
+function companyDirectoryIndexes_(sheet){
+  const headerRow = findHeaderRow(sheet, COMPANY_HEADERS.n);
+  if(headerRow === -1) throw new Error('Could not find the Company Directory header row.');
+  const lastCol = Math.max(sheet.getLastColumn(), 8);
+  const headers = sheet.getRange(headerRow, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
+  const idx = {
+    headerRow: headerRow,
+    n: headers.indexOf(COMPANY_HEADERS.n),
+    s: headers.indexOf(COMPANY_HEADERS.s),
+    t: headers.indexOf(COMPANY_HEADERS.t),
+    a: headers.indexOf(COMPANY_HEADERS.a),
+    c: headers.indexOf(COMPANY_HEADERS.c),
+    note: headers.indexOf('Verification Note'),
+    website: headers.indexOf('Website'),
+    lastCol: lastCol
+  };
+  if(idx.n < 0 || idx.s < 0 || idx.t < 0 || idx.a < 0){
+    throw new Error('Company Directory headers changed; update COMPANY_HEADERS in Code.gs.');
+  }
+  if(idx.c < 0){
+    idx.c = headers.filter(Boolean).length;
+    sheet.getRange(headerRow, idx.c + 1).setValue(COMPANY_HEADERS.c);
+    idx.lastCol = Math.max(idx.lastCol, idx.c + 1);
+  }
+  return idx;
+}
+
+function discoverCareerUrlForCompany_(companyName){
+  const fallback = {
+    url: 'https://www.google.com/search?q=' + encodeURIComponent(String(companyName) + ' careers'),
+    source: 'google-careers-search'
+  };
+  try{
+    if(typeof analysisConfiguration !== 'function') return fallback;
+    const config = analysisConfiguration();
+    if(!config || !config.providers || !config.providers.length) return fallback;
+    const schema = {
+      type: 'object',
+      properties: {
+        url: { type: 'string' },
+        sourceNote: { type: 'string' }
+      },
+      required: ['url']
+    };
+    const prompt = 'You find official company careers pages. For the company name "' + companyName + '", return JSON with url set to the best official https careers/jobs page (India/Hyderabad preferred when relevant). If you are not confident, return an empty url string. Never invent a fake domain. Do not return a Google search URL.';
+    for(let i = 0; i < config.providers.length; i++){
+      const provider = config.providers[i];
+      try{
+        let result = null;
+        if(provider.provider === 'gemini' && typeof callGeminiJson === 'function'){
+          result = callGeminiJson(provider, prompt, schema, [{ text: 'Company: ' + companyName }]);
+        }else if(provider.provider === 'openai'){
+          const response = UrlFetchApp.fetch('https://api.openai.com/v1/responses', {
+            method: 'post',
+            contentType: 'application/json',
+            headers: { Authorization: 'Bearer ' + provider.apiKey },
+            muteHttpExceptions: true,
+            payload: JSON.stringify({
+              model: provider.model,
+              input: [{ role: 'system', content: prompt }, { role: 'user', content: 'Company: ' + companyName }],
+              text: { format: { type: 'json_schema', name: 'career_url', schema: schema, strict: true } }
+            })
+          });
+          if(response.getResponseCode() >= 300) throw new Error('OpenAI career lookup failed.');
+          const body = JSON.parse(response.getContentText());
+          const text = (body.output || []).map(function(item){
+            return (item.content || []).filter(function(part){ return part.type === 'output_text'; }).map(function(part){ return part.text; }).join('');
+          }).join('');
+          result = JSON.parse(text);
+        }
+        const url = String(result && result.url || '').trim();
+        if(isHttpUrl_(url) && !/google\.[^/]+\/search/i.test(url)){
+          return { url: url, source: 'ai-discover' };
+        }
+      }catch(error){
+        console.error('Career URL discover provider failed', error);
+      }
+    }
+  }catch(error){
+    console.error('Career URL discover failed', error);
+  }
+  return fallback;
+}
+
+function addCompany(ownerEmail, data){
+  const name = clampText(data.name || data.company, 200);
+  const companyType = clampText(data.sector || data.s, 200) || 'Not specified';
+  const size = clampText(data.type || data.t, 100) || 'Not specified';
+  const address = clampText(data.address || data.a, 500) || 'Not specified';
+  if(!name) throw new Error('Enter an organization name.');
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try{
+    const sheet = ss().getSheetByName(COMPANY_SHEET);
+    if(!sheet) throw new Error('"' + COMPANY_SHEET + '" sheet not found.');
+    const idx = companyDirectoryIndexes_(sheet);
+    const lastRow = sheet.getLastRow();
+    if(lastRow > idx.headerRow){
+      const names = sheet.getRange(idx.headerRow + 1, idx.n + 1, lastRow - idx.headerRow, 1).getValues();
+      for(let i = 0; i < names.length; i++){
+        if(normalizeKey(names[i][0]) === normalizeKey(name)){
+          throw new Error('That organization already exists.');
+        }
+      }
+    }
+    const row = [];
+    for(let c = 0; c < idx.lastCol; c++) row.push('');
+    row[idx.n] = name;
+    row[idx.s] = companyType;
+    row[idx.t] = size;
+    row[idx.a] = address;
+    if(idx.note >= 0) row[idx.note] = 'Added by member (' + ownerEmail + ') via Add a Referrer';
+    sheet.appendRow(row);
+  }finally{
+    lock.releaseLock();
+  }
+
+  const discovered = discoverCareerUrlForCompany_(name);
+  let careerUrl = '';
+  let careerSource = discovered.source;
+  try{
+    if(discovered.url){
+      const saved = saveCareerUrl(ownerEmail, { company: name, url: discovered.url });
+      careerUrl = saved.url || discovered.url;
+      // saveCareerUrl stamps source as member-edit; restore discover source on career sheet when possible.
+      try{
+        const careerSheet = ensureCareerSheet_();
+        const cIdx = careerSheetIndexes_(careerSheet);
+        const values = careerSheet.getDataRange().getValues();
+        for(let i = cIdx.headerRow; i < values.length; i++){
+          if(normalizeKey(values[i][cIdx.nameIdx]) === normalizeKey(name)){
+            careerSheet.getRange(i + 1, cIdx.sourceIdx + 1).setValue(careerSource);
+            break;
+          }
+        }
+      }catch(ignore){}
+    }
+  }catch(error){
+    console.error('Could not save discovered careers URL', error);
+    careerUrl = discovered.url || '';
+  }
+
+  return {
+    ok: true,
+    company: {
+      n: name,
+      s: companyType,
+      t: size,
+      a: address,
+      c: careerUrl
+    },
+    careerSource: careerSource
+  };
+}
+
+// ---- Referrer contacts (sheet: ReferrerContact; legacy tab name ShiaContacts) ----
+const CONTACTS_HEADER = ['Company', 'Name', 'Phone', 'Email', 'Timestamp', 'Address', 'Owner Email', 'Contact ID', 'Role'];
+
+function getReferrerContactsSheet(){
+  const book = ss();
+  let sheet = book.getSheetByName(CONTACTS_SHEET);
+  if(sheet) return sheet;
+  sheet = book.getSheetByName(CONTACTS_SHEET_LEGACY);
+  if(sheet){
+    // One-time rename so the live workbook matches the new name without data loss.
+    try{ sheet.setName(CONTACTS_SHEET); }catch(error){ /* keep using legacy tab if rename is blocked */ }
+    return sheet;
+  }
+  throw new Error('"' + CONTACTS_SHEET + '" sheet not found (also checked legacy "' + CONTACTS_SHEET_LEGACY + '").');
+}
 
 function ensureContactsHeader(sheet){
   const first = sheet.getRange(1, 1, 1, 2).getValues()[0];
-  if(first[0] === 'Company' && first[1] === 'Name') return; // header already present
-  sheet.insertRowBefore(1); // preserves any existing data rows below
-  sheet.getRange(1, 1, 1, CONTACTS_HEADER.length).setValues([CONTACTS_HEADER]);
+  if(first[0] !== 'Company' || first[1] !== 'Name'){
+    sheet.insertRowBefore(1);
+    sheet.getRange(1, 1, 1, CONTACTS_HEADER.length).setValues([CONTACTS_HEADER]);
+    return;
+  }
+  const lastCol = Math.max(sheet.getLastColumn(), CONTACTS_HEADER.length);
+  const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).trim());
+  if(headers.indexOf('Role') < 0){
+    sheet.getRange(1, Math.max(headers.filter(Boolean).length, 8) + 1).setValue('Role');
+  }
 }
 
 function getContacts(){
-  const sheet = ss().getSheetByName(CONTACTS_SHEET);
-  if(!sheet) throw new Error('"' + CONTACTS_SHEET + '" sheet not found.');
+  const sheet = getReferrerContactsSheet();
   ensureContactsHeader(sheet);
   const values = sheet.getDataRange().getValues();
+  const headers = values[0].map(h => String(h).trim());
+  const roleIdx = headers.indexOf('Role');
   const contacts = {};
   for(let i = 1; i < values.length; i++){
     const row = values[i];
@@ -341,7 +683,8 @@ function getContacts(){
       phone: String(row[2] || ''),
       email: String(row[3] || ''),
       ts: row[4] ? String(row[4]) : '',
-      address: String(row[5] || '')
+      address: String(row[5] || ''),
+      role: roleIdx >= 0 ? String(row[roleIdx] || '') : ''
     });
   }
   return contacts;
@@ -355,32 +698,65 @@ function normalizeKey(value){
   return String(value || '').toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
-function addContact(ownerEmail, data){
+function addReferrerContact(ownerEmail, data){
   const company = clampText(data.company, 200);
   const name = clampText(data.name, 150);
   const phone = clampText(data.phone, 40);
   const address = clampText(data.address, 500);
   const email = clampText(data.email, 254);
+  const role = clampText(data.role, 80);
+  const allowUpdate = data.updateIfExists === true;
   if(!company || !name || !phone || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || data.confirmed !== true){
     throw new Error('Complete your contact details and declaration.');
   }
   const lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try{
-    const sheet = ss().getSheetByName(CONTACTS_SHEET);
-    if(!sheet) throw new Error('"' + CONTACTS_SHEET + '" sheet not found.');
+    const sheet = getReferrerContactsSheet();
     ensureContactsHeader(sheet);
     const values = sheet.getDataRange().getValues();
+    const headers = values[0].map(h => String(h).trim());
+    const roleIdx = headers.indexOf('Role');
     for(let i = 1; i < values.length; i++){
       if(normalizeKey(values[i][0]) === normalizeKey(company) && normalizeKey(values[i][1]) === normalizeKey(name)){
-        throw new Error('This contact is already saved.');
+        if(!allowUpdate) throw new Error('This contact is already saved.');
+        sheet.getRange(i + 1, 3).setValue(phone);
+        sheet.getRange(i + 1, 4).setValue(email);
+        sheet.getRange(i + 1, 5).setValue(new Date());
+        if(address) sheet.getRange(i + 1, 6).setValue(address);
+        sheet.getRange(i + 1, 7).setValue(ownerEmail);
+        if(roleIdx >= 0 && role) sheet.getRange(i + 1, roleIdx + 1).setValue(role);
+        return { ok: true, updated: true, company: company, name: name, phone: phone, email: email, address: address, role: role };
       }
     }
-    sheet.appendRow([company, name, phone, email, new Date(), address, ownerEmail, Utilities.getUuid()]);
-    return { ok: true };
+    const row = [company, name, phone, email, new Date(), address, ownerEmail, Utilities.getUuid()];
+    if(roleIdx >= 0){
+      while(row.length <= roleIdx) row.push('');
+      row[roleIdx] = role;
+    }
+    sheet.appendRow(row);
+    return { ok: true, updated: false, company: company, name: name, phone: phone, email: email, address: address, role: role };
   }finally{
     lock.releaseLock();
   }
+}
+
+/** @deprecated Use addReferrerContact. Kept so older callers do not break. */
+function addContact(ownerEmail, data){
+  return addReferrerContact(ownerEmail, data);
+}
+
+function saveHrContact(ownerEmail, data){
+  return addReferrerContact(ownerEmail, {
+    company: data.company,
+    name: data.name,
+    phone: data.phone,
+    email: data.email,
+    address: data.address || '',
+    role: clampText(data.role, 80) || 'HR',
+    confirmed: data.confirmed === true,
+    updateIfExists: true
+  });
 }
 
 // ---- Resume uploads ----
@@ -583,17 +959,19 @@ function saveOpportunity(email, data){
     try{ bytes = Utilities.base64Decode(file.dataBase64); }catch(error){ throw new Error('Could not read the attachment.'); }
     total += bytes.length;
     if(!bytes.length || total > 5 * 1024 * 1024) throw new Error('Files must be nonempty and total 5 MB or less.');
-    return {name:file.name, bytes:bytes, mimeType:OPPORTUNITY_TYPES[extension]};
+    return {name:file.name, bytes:bytes, mimeType:OPPORTUNITY_TYPES[extension], dataBase64:file.dataBase64};
   });
+  let record;
+  let sheet;
   const lock = LockService.getScriptLock(); lock.waitLock(15000);
   try{
-    let sheet = ss().getSheetByName(OPPORTUNITY_SHEET);
+    sheet = ss().getSheetByName(OPPORTUNITY_SHEET);
     if(!sheet){ sheet = ss().insertSheet(OPPORTUNITY_SHEET); sheet.appendRow(['Submission ID', 'Submitted by', 'Record JSON']); }
     const previous = sheet.getDataRange().getValues().slice(1).find(row => row[0] === requestId && String(row[1]).toLowerCase() === email.toLowerCase());
     if(previous) return {ok:true, opportunity:JSON.parse(previous[2])};
     const folder = setupProfessionalOpportunity();
     const created = [];
-    const record = {id:requestId, createdAt:new Date().toISOString(), text:text, files:[], postedBy:profile.name, homeCompanies:profile.homeCompanies, company:company};
+    record = {id:requestId, createdAt:new Date().toISOString(), text:text, files:[], postedBy:profile.name, homeCompanies:profile.homeCompanies, company:company};
     try{
       attachments.forEach((attachment, index) => {
         const safeName = attachment.name.replace(/[\\/:*?"<>|\x00-\x1f]/g, '_').slice(0,150);
@@ -602,13 +980,50 @@ function saveOpportunity(email, data){
         record.files.push({name:attachment.name, id:file.getId(), url:file.getUrl(), mimeType:attachment.mimeType});
       });
       if(text) created.push(folder.createFile(Utilities.newBlob(text, 'text/plain', requestId + '_message.txt')));
-      // Preserve raw input and attribution for future AI processing, without interpreting it.
       created.push(folder.createFile(Utilities.newBlob(JSON.stringify({...record, submittedBy:email}), 'application/json', requestId + '_metadata.json')));
       sheet.appendRow([requestId, email, JSON.stringify(record)]);
     }catch(error){
       created.forEach(file => { try{ file.setTrashed(true); }catch(cleanupError){ console.error(cleanupError); } });
       throw error;
     }
-    return {ok:true, opportunity:record};
   }finally{ lock.releaseLock(); }
+
+  // AI decompose after the opportunity is safely stored (same pattern as resume analysis).
+  if(typeof analyzePostedOpportunity === 'function'){
+    try{
+      const analysis = analyzePostedOpportunity(email, {
+        requestId: requestId,
+        company: company,
+        text: text,
+        files: attachments.map(file => ({ name: file.name, dataBase64: file.dataBase64 }))
+      });
+      record.analysis = analysis;
+      const updateLock = LockService.getScriptLock();
+      updateLock.waitLock(15000);
+      try{
+        const values = sheet.getDataRange().getValues();
+        for(let i = 1; i < values.length; i++){
+          if(values[i][0] === requestId && String(values[i][1]).toLowerCase() === email.toLowerCase()){
+            sheet.getRange(i + 1, 3).setValue(JSON.stringify(record));
+            break;
+          }
+        }
+      }finally{
+        updateLock.releaseLock();
+      }
+    }catch(error){
+      console.error('Opportunity saved; analysis requires retry.', error);
+      record.analysis = {
+        yearsExperience: null,
+        technicalSkills: [],
+        nonTechnicalSkills: [],
+        experienceBasis: '',
+        reviewNotes: ['Opportunity saved; AI decomposition failed. Check LLM Script properties and try posting again.'],
+        status: 'Failed',
+        method: ''
+      };
+    }
+  }
+
+  return {ok:true, opportunity:record};
 }
