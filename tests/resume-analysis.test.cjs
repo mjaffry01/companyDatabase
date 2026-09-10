@@ -187,18 +187,32 @@ test('matchOpportunityToResumes_ returns nothing when the opportunity stated no 
   c.resumeAnalysisSheet=()=>{throw Error('sheet unavailable');};
   assert.deepEqual(Array.from(c.matchOpportunityToResumes_(opportunityReq())),[]);
 });
-test('sendOpportunityMatchEmail_ emails the matched candidate with score and skills, and never throws',()=>{
+test('truncateForEmail_ passes short text through and cuts long text with a note',()=>{
+  const c=setup();
+  assert.equal(c.truncateForEmail_('short JD',4000),'short JD');
+  assert.equal(c.truncateForEmail_('',4000),'');
+  const long=c.truncateForEmail_('x'.repeat(5000),4000);
+  assert.equal(long.length<5000,true);
+  assert.match(long,/truncated/);
+});
+test('sendOpportunityMatchEmail_ includes the JD text and the referral contact\'s name/email, and never throws',()=>{
   const c=setup();const mails=[];
   c.MailApp={sendEmail:(to,subject,body)=>mails.push({to,subject,body})};
-  c.sendOpportunityMatchEmail_({name:'Sam',email:'sam@example.com',score:82,matchedSkills:['React','AWS']},'Acme');
+  c.sendOpportunityMatchEmail_({name:'Sam',email:'sam@example.com',score:82,matchedSkills:['React','AWS']},'Acme',
+    'We need a senior React engineer with AWS experience.',[{name:'Rita',email:'rita@acme.com'}]);
   assert.equal(mails.length,1);
   assert.equal(mails[0].to,'sam@example.com');
-  assert.match(mails[0].subject,/may match your resume/i);
-  assert.match(mails[0].body,/Acme/);
+  assert.match(mails[0].subject,/Acme.*may match your resume/i);
   assert.match(mails[0].body,/82%/);
   assert.match(mails[0].body,/React, AWS/);
+  assert.match(mails[0].body,/senior React engineer with AWS experience/); // the JD itself, not just a skills summary
+  assert.match(mails[0].body,/Rita <rita@acme\.com>/); // referrer name and email
+  const noContact=[];
+  c.MailApp={sendEmail:(to,subject,body)=>noContact.push({to,subject,body})};
+  c.sendOpportunityMatchEmail_({name:'Sam',email:'sam@example.com',score:82,matchedSkills:[]},'Acme','Need React',[]);
+  assert.match(noContact[0].body,/No referral contact is on file/);
   c.MailApp={sendEmail:()=>{throw Error('quota exceeded');}};
-  assert.doesNotThrow(()=>c.sendOpportunityMatchEmail_({name:'Sam',email:'sam@example.com',score:82,matchedSkills:[]},'Acme'));
+  assert.doesNotThrow(()=>c.sendOpportunityMatchEmail_({name:'Sam',email:'sam@example.com',score:82,matchedSkills:[]},'Acme','Need React',[]));
 });
 // ---- Referral-contact notification ----
 test('findContactsForCompany_ matches company names case/whitespace-insensitively, dedupes by email, and skips bad emails',()=>{
@@ -219,20 +233,21 @@ test('findContactsForCompany_ tolerates getContacts being unavailable or throwin
   c.getContacts=()=>{throw Error('sheet unavailable');};
   assert.deepEqual(Array.from(c.findContactsForCompany_('Acme')),[]);
 });
-test('sendReferralMatchEmail_ lists every matched candidate and the poster, and never throws',()=>{
+test('sendReferralMatchEmail_ lists every matched candidate, the poster, and the JD text, and never throws',()=>{
   const c=setup();const mails=[];
   c.MailApp={sendEmail:(to,subject,body)=>mails.push({to,subject,body})};
   c.sendReferralMatchEmail_({name:'Rita',email:'rita@acme.com'},
     [{name:'Sam',email:'sam@example.com',score:82,matchedSkills:['React']},{name:'Lee',email:'lee@example.com',score:70,matchedSkills:[]}],
-    'Acme',{name:'Poster Pat',email:'poster@example.com'});
+    'Acme',{name:'Poster Pat',email:'poster@example.com'},'We need a senior React engineer.');
   assert.equal(mails.length,1);
   assert.equal(mails[0].to,'rita@acme.com');
   assert.match(mails[0].subject,/Acme opening/);
   assert.match(mails[0].body,/Sam <sam@example\.com>.*82%/);
   assert.match(mails[0].body,/Lee <lee@example\.com>.*70%/);
   assert.match(mails[0].body,/Poster Pat \(poster@example\.com\)/);
+  assert.match(mails[0].body,/senior React engineer/); // the JD itself
   c.MailApp={sendEmail:()=>{throw Error('quota exceeded');}};
-  assert.doesNotThrow(()=>c.sendReferralMatchEmail_({email:'rita@acme.com'},[{name:'Sam',email:'sam@example.com',score:82,matchedSkills:[]}],'Acme',{}));
+  assert.doesNotThrow(()=>c.sendReferralMatchEmail_({email:'rita@acme.com'},[{name:'Sam',email:'sam@example.com',score:82,matchedSkills:[]}],'Acme',{},'JD text'));
 });
 test('analyzePostedOpportunity matches resumes, emails winners, and notifies a referral contact naming the poster',()=>{
   const c=setup();const mails=[];
@@ -252,8 +267,11 @@ test('analyzePostedOpportunity matches resumes, emails winners, and notifies a r
   assert.equal(result.referralContactsNotified,1);
   assert.equal(mails.length,2);
   assert.equal(mails[0].to,'sam@example.com'); // candidate notified first
+  assert.match(mails[0].body,/Need React, 4 years/); // candidate sees the JD itself
+  assert.match(mails[0].body,/Rita <rita@acme\.com>/); // and the referral contact's name/email to reach out directly
   assert.equal(mails[1].to,'rita@acme.com'); // then the referral contact
   assert.match(mails[1].body,/Poster Pat \(poster@example\.com\)/);
+  assert.match(mails[1].body,/Need React, 4 years/); // referral contact also sees the JD
   assert.deepEqual(writes[0].payload.matches[0].email,'sam@example.com'); // matches travel with the written payload, but are not part of the sheet's fixed columns
 });
 test('analyzePostedOpportunity skips the referral email entirely when the company has no saved contact',()=>{
@@ -271,4 +289,5 @@ test('analyzePostedOpportunity skips the referral email entirely when the compan
   assert.equal(result.referralContactsNotified,0);
   assert.equal(mails.length,1); // candidate only, no referral email
   assert.equal(mails[0].to,'sam@example.com');
+  assert.match(mails[0].body,/No referral contact is on file/); // candidate still told there's no contact yet
 });

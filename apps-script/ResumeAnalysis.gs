@@ -653,20 +653,20 @@ function analyzePostedOpportunity(email, data){
       method: analysis.method
     };
     // Score every analyzed resume against these extracted requirements, email the
-    // candidates who clear the threshold, and hand the match list back so the
-    // poster sees who was notified (matches are not written to the sheet - only
-    // computed fresh each time an opportunity is posted).
+    // candidates who clear the threshold (with the JD and, when one is on file,
+    // the referral contact's name/email so they can reach out directly), and
+    // hand the match list back so the poster sees who was notified. Matches are
+    // not written to the sheet - only computed fresh each time an opportunity
+    // is posted.
     const matches = matchOpportunityToResumes_(payload);
-    matches.forEach(match => sendOpportunityMatchEmail_(match, company));
-    let referralContactsNotified = 0;
-    if(matches.length){
-      const referralContacts = findContactsForCompany_(company);
+    const referralContacts = matches.length ? findContactsForCompany_(company) : [];
+    matches.forEach(match => sendOpportunityMatchEmail_(match, company, opportunityText, referralContacts));
+    if(referralContacts.length){
       const poster = {name: clampText(data.postedBy, 150), email: email};
-      referralContacts.forEach(contact => sendReferralMatchEmail_(contact, matches, company, poster));
-      referralContactsNotified = referralContacts.length;
+      referralContacts.forEach(contact => sendReferralMatchEmail_(contact, matches, company, poster, opportunityText));
     }
     payload.matches = matches;
-    payload.referralContactsNotified = referralContactsNotified;
+    payload.referralContactsNotified = referralContacts.length;
     writeOpportunityAnalysisRow_(email, requestId, company, payload, sourceSummary);
     return payload;
   }catch(error){
@@ -816,15 +816,36 @@ function matchOpportunityToResumes_(opportunity){
   return [...best.values()].filter(match => match.score >= OPPORTUNITY_MATCH_THRESHOLD).sort((a, b) => b.score - a.score).slice(0, 25);
 }
 
-function sendOpportunityMatchEmail_(match, company){
+// Keeps an email body from ballooning to the full 20,000-character JD cap;
+// cuts cleanly and says so rather than silently dropping the rest.
+function truncateForEmail_(text, max){
+  const value = String(text || '').trim();
+  if(!value) return '';
+  if(value.length <= max) return value;
+  return value.slice(0, max).trim() + '\n... (truncated - see the original posting for the full text)';
+}
+
+// Emails the matched candidate the job description itself (not just a skills
+// summary) plus, when one is on file, the referral contact's name and email so
+// they can reach out directly rather than waiting to be contacted.
+function sendOpportunityMatchEmail_(match, company, opportunityText, referralContacts){
   try{
     const skillsLine = match.matchedSkills.length ? match.matchedSkills.join(', ') : 'your background';
-    MailApp.sendEmail(match.email, 'A new opportunity may match your resume',
+    const jdBlock = opportunityText
+      ? '\n\n----- Opportunity details -----\n' + truncateForEmail_(opportunityText, 4000) + '\n--------------------------------\n'
+      : '';
+    const contacts = (referralContacts || []).filter(c => c && c.email);
+    const contactLine = contacts.length
+      ? '\nYou can reach out directly about this opening to our contact at ' + company + ': '
+        + contacts.map(c => (c.name ? c.name + ' ' : '') + '<' + c.email + '>').join(', ') + '.\n'
+      : '\nNo referral contact is on file for ' + company + ' yet, but a member of the community may still reach out to you.\n';
+    MailApp.sendEmail(match.email, 'A new opportunity at ' + company + ' may match your resume',
       'Hi' + (match.name ? ' ' + match.name : '') + ',\n\n'
       + 'A new opportunity' + (company ? ' at ' + company : '') + ' was just posted in the Company Contact Book, '
-      + 'and your resume looks like roughly a ' + match.score + '% match based on ' + skillsLine + '.\n\n'
-      + 'A member of the community may reach out to you about it directly. If you would like to update or remove '
-      + 'your resume, use the Resumes tab.\n\nWishing you all the best.\n\nIf you did not request this, please ignore this email.');
+      + 'and your resume looks like roughly a ' + match.score + '% match based on ' + skillsLine + '.'
+      + jdBlock
+      + contactLine
+      + '\nIf you would like to update or remove your resume, use the Resumes tab.\n\nWishing you all the best.\n\nIf you did not request this, please ignore this email.');
   }catch(error){ console.error('Opportunity match email failed', error); }
 }
 
@@ -854,7 +875,7 @@ function findContactsForCompany_(company){
 // summary of every matched candidate for that posting, plus who posted it, so
 // they can coordinate a referral. One email per contact per posting, not per
 // candidate, to avoid flooding a contact when several candidates match.
-function sendReferralMatchEmail_(contact, matches, company, poster){
+function sendReferralMatchEmail_(contact, matches, company, poster, opportunityText){
   try{
     const lines = matches.map(match => {
       const skillsLine = match.matchedSkills.length ? match.matchedSkills.join(', ') : 'their background';
@@ -863,10 +884,14 @@ function sendReferralMatchEmail_(contact, matches, company, poster){
     const postedByLine = poster && (poster.name || poster.email)
       ? ' It was posted by ' + (poster.name || 'a member') + (poster.email ? ' (' + poster.email + ')' : '') + ' - reach out to them to coordinate.'
       : '';
+    const jdBlock = opportunityText
+      ? '\n\n----- Opportunity details -----\n' + truncateForEmail_(opportunityText, 4000) + '\n--------------------------------\n'
+      : '';
     MailApp.sendEmail(contact.email, 'Candidate match' + (matches.length > 1 ? 'es' : '') + ' for your ' + company + ' opening',
       'Hi' + (contact.name ? ' ' + contact.name : '') + ',\n\n'
-      + 'A new opportunity at ' + company + ' was just posted in the Company Contact Book.' + postedByLine + '\n\n'
-      + 'The following candidate' + (matches.length > 1 ? 's look' : ' looks') + ' like a possible fit based on their resume:\n\n' + lines + '\n\n'
+      + 'A new opportunity at ' + company + ' was just posted in the Company Contact Book.' + postedByLine
+      + jdBlock
+      + '\nThe following candidate' + (matches.length > 1 ? 's look' : ' looks') + ' like a possible fit based on their resume:\n\n' + lines + '\n\n'
       + 'This is an automated skills/experience match, not a verified reference - please review before referring.\n\nWishing you all the best.');
   }catch(error){ console.error('Referral match email failed', error); }
 }

@@ -40,23 +40,30 @@ vague posting can't fan out into unbounded emails. Matches are **not** written
 to the Opportunity Analysis sheet (no schema change needed); they're computed
 fresh each time and returned as `analysis.matches` on the opportunity record.
 
-For every match, `sendOpportunityMatchEmail_` emails the **candidate** a short
-note naming the company, their approximate match score, and the matched
-skills - a candidate email failure is logged and swallowed, never blocking the
-save. The person who posted the opportunity sees the matched candidates'
-names, scores and matched skills in the Opportunities tab, under the same
-AI-requirements panel (no candidate email addresses are shown there).
+For every match, `sendOpportunityMatchEmail_` emails the **candidate** their
+approximate match score and matched skills, the **job description itself**
+(the same text/attachment-extracted text the AI analyzed, truncated to 4,000
+characters via `truncateForEmail_` with a "see the original posting" note if
+longer - not just a skills summary), and, when `findContactsForCompany_` finds
+one, the **referral contact's name and email** at that company so the
+candidate can reach out directly instead of waiting to be contacted; if no
+contact is on file yet the email says so instead. A candidate email failure is
+logged and swallowed, never blocking the save. The person who posted the
+opportunity sees the matched candidates' names, scores and matched skills in
+the Opportunities tab, under the same AI-requirements panel (no candidate
+email addresses are shown there).
 
 If there is at least one match, `findContactsForCompany_` looks up the
 opportunity's company in the **ReferrerContact** sheet (via `getContacts()` in
 Code.gs, matched case/whitespace-insensitively, deduplicated by email). Each
 referral contact found gets **one** email from `sendReferralMatchEmail_`
-listing every matched candidate (name, email, score, matched skills) for that
-posting, plus who posted the opportunity (name and email, from `profile.name`
-in `saveOpportunity` and the verified sign-in email) so the contact knows who
-to coordinate with. One email per contact per posting, not per candidate, so a
-company with several matches doesn't flood its referral contact. No email goes
-out at all when the company has no saved referral contact. The count of
+listing every matched candidate (name, email, score, matched skills), the same
+job description text, and who posted the opportunity (name and email, from
+`profile.name` in `saveOpportunity` and the verified sign-in email) so the
+contact knows who to coordinate with. One email per contact per posting, not
+per candidate, so a company with several matches doesn't flood its referral
+contact. No email goes out at all when the company has no saved referral
+contact. The count of
 contacts notified is returned as `analysis.referralContactsNotified` and shown
 in the post-save status line alongside the candidate match count.
 
