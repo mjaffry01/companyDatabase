@@ -21,6 +21,19 @@ Blaze plan (a card on file) even for $0 actual usage. That code is kept for refe
    company or contact data is returned. New sign-ins are recorded automatically as
    `Approved = FALSE`.
 
+## Staying signed in across refreshes
+
+Google's ID tokens are short-lived (about an hour) by design, and the backend still
+re-verifies one on every request per step 4 above — that has not changed. What changed is
+the *frontend*: `auth.js` now caches the current token in `localStorage` and restores it on
+page load (`tryRestoreSession()`), so refreshing the tab no longer drops back to the sign-in
+button. When the cached token has actually expired, the frontend falls back to Google's
+silent One Tap re-auth (`auto_select: true` + `google.accounts.id.prompt()`) before ever
+showing the button again — this reissues a fresh token with no visible UI as long as the
+browser still has an active Google session that previously signed in here. Together, a
+returning member stays signed in well past 8 hours without re-clicking "Sign in with
+Google"; only an explicit "Sign out" clears the cache and disables the silent re-auth.
+
 ## Setup steps
 
 ### 1. Create an OAuth Client ID (free, no billing)
