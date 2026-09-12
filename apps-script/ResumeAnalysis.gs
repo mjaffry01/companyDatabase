@@ -607,7 +607,7 @@ function buildTailoredResumeDoc_(tailored){
   tailored.sections.forEach(section => {
     body.appendParagraph(section.title).setHeading(DocumentApp.ParagraphHeading.HEADING2);
     section.entries.forEach(entry => {
-      const headingLine = entry.subheading ? entry.heading + ' — ' + entry.subheading : entry.heading;
+      const headingLine = entry.subheading ? entry.heading + ' - ' + entry.subheading : entry.heading; // plain hyphen: an em dash has mis-encoded across the Windows clipboard -> Apps Script editor paste before
       body.appendParagraph(headingLine).setHeading(DocumentApp.ParagraphHeading.HEADING3);
       entry.bullets.forEach(bullet => {
         body.appendListItem(bullet).setGlyphType(DocumentApp.GlyphType.BULLET);
