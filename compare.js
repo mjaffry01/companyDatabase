@@ -1,5 +1,7 @@
 let fitComparing = false;
 let fitJdFiles = [];
+let fitLastRequest = null; // the exact payload that produced the current report, reused by "Generate tailored resume" so nothing needs re-entering
+let fitTailoring = false;
 const FIT_JD_ALLOWED = ['txt','html','htm','doc','docx','xls','xlsx','pdf','jpg','jpeg','png','gif','webp'];
 function resetResumeFitForm(){
   const form = document.getElementById('fitForm');
@@ -12,6 +14,8 @@ function resetResumeFitForm(){
   document.getElementById('fitReport').replaceChildren();
   document.getElementById('fitCompareBtn').disabled = false;
   fitComparing = false;
+  fitLastRequest = null;
+  fitTailoring = false;
 }
 function renderFitJdAttachments(){
   const root = document.getElementById('fitJdAttachments');
@@ -88,6 +92,109 @@ function renderResumeFit(result, method, status){
   if(result.reviewNotes && result.reviewNotes.length){
     root.append(fitList('Review notes', result.reviewNotes));
   }
+  if(status !== 'Awaiting LLM setup') root.append(buildTailorSection(result));
+}
+function buildTailorSection(comparison){
+  const wrap = document.createElement('section');
+  wrap.id = 'fitTailorSection';
+  const btn = document.createElement('button');
+  btn.type = 'button'; btn.id = 'fitTailorBtn'; btn.className = 'btn btn-primary'; btn.textContent = 'Generate tailored resume';
+  const note = document.createElement('p');
+  note.id = 'fitTailorStatus'; note.setAttribute('role', 'status');
+  const hint = document.createElement('p');
+  hint.style.cssText = 'font-size:12px;color:var(--text-dim);margin-top:4px';
+  hint.textContent = 'Rewrites your resume’s own content toward this JD’s language — it never adds skills, projects or experience you didn’t already list.';
+  btn.onclick = () => generateTailoredResumeFlow(comparison);
+  wrap.append(btn, hint, note);
+  return wrap;
+}
+function base64ToBlob(base64, mimeType){
+  const byteChars = atob(base64);
+  const bytes = new Uint8Array(byteChars.length);
+  for(let i = 0; i < byteChars.length; i++) bytes[i] = byteChars.charCodeAt(i);
+  return new Blob([bytes], {type: mimeType});
+}
+function downloadTailoredResume(base64, fileName){
+  const blob = base64ToBlob(base64, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = fileName || 'Tailored-Resume.docx';
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10000);
+}
+function renderTailoredResume(tailored, fileName, docxBase64, githubSuggestions){
+  const box = document.createElement('section');
+  box.className = 'fit-tailored';
+  const h = document.createElement('h4'); h.textContent = 'Tailored resume'; box.append(h);
+  if(tailored.headline){ const p = document.createElement('p'); p.style.fontWeight = '600'; p.textContent = tailored.headline; box.append(p); }
+  if(tailored.summary){ const p = document.createElement('p'); p.textContent = tailored.summary; box.append(p); }
+  (tailored.sections || []).forEach(section => {
+    const sh = document.createElement('h5'); sh.textContent = section.title; box.append(sh);
+    (section.entries || []).forEach(entry => {
+      const eh = document.createElement('p'); eh.style.fontWeight = '600';
+      eh.textContent = entry.heading + (entry.subheading ? ' — ' + entry.subheading : '');
+      box.append(eh);
+      const ul = document.createElement('ul');
+      (entry.bullets || []).forEach(bullet => { const li = document.createElement('li'); li.textContent = bullet; ul.append(li); });
+      box.append(ul);
+    });
+  });
+  const downloadBtn = document.createElement('button');
+  downloadBtn.type = 'button'; downloadBtn.className = 'btn btn-primary';
+  downloadBtn.textContent = 'Download as Word (.docx)';
+  downloadBtn.onclick = () => downloadTailoredResume(docxBase64, fileName);
+  box.append(downloadBtn);
+  if(tailored.missingSkillsNotAdded && tailored.missingSkillsNotAdded.length){
+    box.append(fitList('JD skills not added (not evidenced on your resume)', tailored.missingSkillsNotAdded));
+  }
+  if(githubSuggestions && githubSuggestions.length){
+    const gh = document.createElement('section');
+    const ghTitle = document.createElement('h5'); ghTitle.textContent = 'Example projects to explore for missing skills'; gh.append(ghTitle);
+    const ghNote = document.createElement('p'); ghNote.style.cssText = 'font-size:12px;color:var(--text-dim)';
+    ghNote.textContent = 'Public GitHub projects that demonstrate each skill — for you to study or build from, not part of your resume.';
+    gh.append(ghNote);
+    githubSuggestions.forEach(entry => {
+      const p = document.createElement('p'); p.style.fontWeight = '600'; p.textContent = entry.skill; gh.append(p);
+      const ul = document.createElement('ul');
+      entry.repos.forEach(repo => {
+        const li = document.createElement('li');
+        const a = document.createElement('a'); a.href = repo.url; a.target = '_blank'; a.rel = 'noopener';
+        a.textContent = repo.name + ' (' + repo.stars + '★)';
+        li.append(a);
+        if(repo.description) li.append(document.createTextNode(' — ' + repo.description));
+        ul.append(li);
+      });
+      gh.append(ul);
+    });
+    box.append(gh);
+  }
+  return box;
+}
+async function generateTailoredResumeFlow(comparison){
+  if(!fitLastRequest || fitTailoring) return;
+  fitTailoring = true;
+  const btn = document.getElementById('fitTailorBtn');
+  const status = document.getElementById('fitTailorStatus');
+  btn.disabled = true;
+  status.textContent = 'Rewriting your resume toward this JD, then checking for skill-gap project examples…';
+  try{
+    const json = await contactApi('generateTailoredResume', {...fitLastRequest, comparison});
+    if(json.error){
+      throw new Error(json.error === 'Unknown action.'
+        ? 'Tailored resumes are not on the live Apps Script yet. Deploy the updated Code.gs and ResumeAnalysis.gs, then try again.'
+        : json.error);
+    }
+    if(!json.ok) throw new Error('Gemini is not connected yet.');
+    status.textContent = 'Tailored resume ready.';
+    document.getElementById('fitTailorSection').append(renderTailoredResume(json.tailored, json.fileName, json.docxBase64, json.githubSuggestions));
+    btn.remove();
+  }catch(error){
+    status.textContent = '';
+    showToast('Could not generate tailored resume: ' + error.message);
+    btn.disabled = false;
+  }finally{
+    fitTailoring = false;
+  }
 }
 document.getElementById('fit-opportunity-files').addEventListener('change', event => {
   addFitJdFiles(event.target.files);
@@ -140,18 +247,21 @@ document.getElementById('fitForm').addEventListener('submit', async event => {
     for(const jdFile of fitJdFiles){
       opportunityFiles.push({name:jdFile.name, dataBase64:await fileToBase64(jdFile)});
     }
-    const json = await contactApi('compareResumeFit', {
+    const requestPayload = {
       fileName, dataBase64, googleDocUrl: file ? '' : googleDocUrl, resumeText: file || googleDocUrl ? '' : resumeText,
       opportunityTitle, opportunityText, opportunityFiles
-    });
+    };
+    const json = await contactApi('compareResumeFit', requestPayload);
     if(json.error){
       throw new Error(json.error === 'Unknown action.'
         ? 'Resume fit is not on the live Apps Script yet. Deploy the updated Code.gs and ResumeAnalysis.gs, then try again.'
         : json.error);
     }
+    fitLastRequest = json.status === 'Awaiting LLM setup' ? null : requestPayload;
     renderResumeFit(json.comparison, json.method, json.status);
     note.textContent = json.status === 'Awaiting LLM setup' ? 'Waiting for Gemini to be connected.' : 'Comparison complete.';
   }catch(error){
+    fitLastRequest = null;
     note.textContent = '';
     showToast('Could not compare: ' + error.message);
   }finally{

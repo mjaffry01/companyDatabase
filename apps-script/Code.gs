@@ -132,6 +132,11 @@ function doPost(e){
         ? compareResumeToOpportunity(email, body)
         : {error:'Resume comparison is not deployed yet.'});
     }
+    if(action === 'generateTailoredResume'){
+      return json(typeof generateTailoredResume === 'function'
+        ? generateTailoredResume(email, body)
+        : {error:'Tailored resume generation is not deployed yet.'});
+    }
     throw new Error('Unknown action.');
   }catch(error){
     return json({ error: (error && error.message) || String(error) });

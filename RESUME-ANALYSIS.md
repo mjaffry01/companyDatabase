@@ -54,6 +54,44 @@ structured JSON, and logs each comparison to a new **"Resume Fit"** sheet tab
 been redeployed yet - the frontend then shows a message telling the caller
 to deploy the updated `Code.gs`/`ResumeAnalysis.gs`.
 
+## Tailored resume (Word download)
+
+After a Resume Fit comparison completes, a "Generate tailored resume" button
+calls the new `generateTailoredResume` action (`ResumeAnalysis.gs`), reusing
+the same resume/opportunity inputs plus the just-computed comparison (as
+context, not instructions). It returns a structured tailored resume - name,
+headline, summary, sections of heading/subheading/bullets - built entirely
+from **facts already present in the source resume**: the model may reorder,
+regroup and rephrase real bullets/skills toward the JD's language, but
+`validateTailoredResume` and the prompt itself forbid inventing an employer,
+project, date, metric or skill the resume doesn't already state. Anything the
+JD needs that the resume can't back up is named in `missingSkillsNotAdded`
+instead of being fabricated in.
+
+`buildTailoredResumeDoc_` renders that structure into a throwaway Google Doc
+(`DocumentApp`, titles/headings/bullets - no missing-skills text in the doc
+itself), `exportDocAsDocxBase64_` exports it as `.docx` bytes via the Drive
+API (`files.export`, same OAuth-token pattern as the rest of the app), and the
+temporary Doc is always trashed afterward (even if the export itself fails).
+The frontend (`compare.js`) turns the returned base64 into a `Blob` and
+triggers a normal browser download - nothing is written to Drive that the
+member can see or that persists.
+
+For each skill in `missingSkillsNotAdded` (capped to 5), `suggestGithubProjectsForMissingSkills_`
+searches GitHub's public repository search API for real, existing projects
+that demonstrate that skill, purely as **"study or build something like
+this"** suggestions - they are always someone else's public work, never
+inserted into the resume or presented as the candidate's own. GitHub's
+unauthenticated search is capped at 10 requests/minute; set `GITHUB_TOKEN` in
+Script Properties (a token with no scopes is enough) to raise that if usage
+grows. A failed or empty lookup for one skill is skipped silently; it never
+blocks the tailored resume itself.
+
+This requires the `https://www.googleapis.com/auth/documents` OAuth scope
+(added to `appsscript.json`) on top of the scopes already used elsewhere -
+redeploying will prompt for a fresh authorization consent the first time, the
+same way adding Drive access did for resume uploads.
+
 ## Recovery and limitations
 
 Run `retryResumeAnalysis` in the Apps Script editor to process up to five pending
