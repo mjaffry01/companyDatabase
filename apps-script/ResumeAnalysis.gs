@@ -845,7 +845,8 @@ function sendOpportunityMatchEmail_(match, company, opportunityText, referralCon
       + 'and your resume looks like roughly a ' + match.score + '% match based on ' + skillsLine + '.'
       + jdBlock
       + contactLine
-      + '\nIf you would like to update or remove your resume, use the Resumes tab.\n\nWishing you all the best.\n\nIf you did not request this, please ignore this email.');
+      + '\nIf you would like to update or remove your resume, use the Resumes tab.\n\nWishing you all the best.\n\nIf you did not request this, please ignore this email.',
+      {name: (typeof MAIL_SENDER_NAME !== 'undefined' ? MAIL_SENDER_NAME : 'Company Contact Book')});
   }catch(error){ console.error('Opportunity match email failed', error); }
 }
 
@@ -892,7 +893,8 @@ function sendReferralMatchEmail_(contact, matches, company, poster, opportunityT
       + 'A new opportunity at ' + company + ' was just posted in the Company Contact Book.' + postedByLine
       + jdBlock
       + '\nThe following candidate' + (matches.length > 1 ? 's look' : ' looks') + ' like a possible fit based on their resume:\n\n' + lines + '\n\n'
-      + 'This is an automated skills/experience match, not a verified reference - please review before referring.\n\nWishing you all the best.');
+      + 'This is an automated skills/experience match, not a verified reference - please review before referring.\n\nWishing you all the best.',
+      {name: (typeof MAIL_SENDER_NAME !== 'undefined' ? MAIL_SENDER_NAME : 'Company Contact Book')});
   }catch(error){ console.error('Referral match email failed', error); }
 }
 

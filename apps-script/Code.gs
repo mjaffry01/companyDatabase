@@ -43,6 +43,10 @@ const CONTACTS_SHEET = 'ReferrerContact';
 const CONTACTS_SHEET_LEGACY = 'ShiaContacts';
 const MEMBERS_SHEET = 'Members';
 const AUTO_APPROVE_MINUTES = 3;
+// Every MailApp.sendEmail call passes this as the `name` option so recipients see a
+// recognizable sender ("Company Contact Book <the-deploying-account@gmail.com>") instead of
+// just the raw deploying Gmail address with no label.
+const MAIL_SENDER_NAME = 'Company Contact Book';
 const RESUMES_SHEET = 'Resumes';
 const RESUME_FOLDER_NAME = 'Professional Resumes Raw Data';
 const RESUME_MAX_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -162,7 +166,7 @@ function notifyAdminsOfPendingMember(email, sub){
   const appUrl = 'https://mjaffry01.github.io/companyDatabase/';
   const body = 'A new member signed in to Company Contact Book:\n\nEmail: ' + email + '\nGoogle ID: ' + sub + '\nTime: ' + new Date().toLocaleString() + '\n\nTo approve immediately, open the Jobfinder spreadsheet Members tab and set Approved = TRUE for this email.\n\nIf you do nothing, they will be auto-approved in ' + AUTO_APPROVE_MINUTES + ' minutes and will receive a welcome email.\n\nApp: ' + appUrl;
   admins.forEach(admin => {
-    try{ MailApp.sendEmail(admin, subject, body); }catch(error){ console.error('Admin notify failed', error); }
+    try{ MailApp.sendEmail(admin, subject, body, {name: MAIL_SENDER_NAME}); }catch(error){ console.error('Admin notify failed', error); }
   });
 }
 
@@ -173,7 +177,8 @@ function sendWelcomeEmail(email){
   const appUrl = 'https://mjaffry01.github.io/companyDatabase/';
   try{
     MailApp.sendEmail(email, 'Your Company Contact Book access is approved',
-      'Hi,\n\nYour access to the Company Contact Book has been granted. You can now sign in and explore the app.\n\n' + appUrl + '\n\nIf you did not request this, please ignore this email.');
+      'Hi,\n\nYour access to the Company Contact Book has been granted. You can now sign in and explore the app.\n\n' + appUrl + '\n\nIf you did not request this, please ignore this email.',
+      {name: MAIL_SENDER_NAME});
   }catch(error){ console.error('Welcome email failed', error); }
 }
 
@@ -784,7 +789,8 @@ function ensureResumesHeader(sheet){
 function sendResumeUploadEmail(email){
   try{
     MailApp.sendEmail(email, 'Your resume has been uploaded',
-      'Hi,\n\nYour resume has been uploaded to the Company Contact Book. We are looking for opportunities to match your resume with employers in the community.\n\nThank you for uploading. Wishing you all the best.\n\nIf you did not request this, please ignore this email.');
+      'Hi,\n\nYour resume has been uploaded to the Company Contact Book. We are looking for opportunities to match your resume with employers in the community.\n\nThank you for uploading. Wishing you all the best.\n\nIf you did not request this, please ignore this email.',
+      {name: MAIL_SENDER_NAME});
   }catch(error){ console.error('Resume upload email failed', error); }
 }
 
@@ -1099,5 +1105,32 @@ function saveOpportunity(email, data){
     }
   }
 
+  sendOpportunityPostedEmail_(email, record);
   return {ok:true, opportunity:record};
+}
+
+// Confirms to the poster that their opportunity was saved, and - when analysis
+// completed - how many candidates and referral contacts were already notified.
+// Best-effort like the other notification emails: a failure here is logged and
+// never blocks or unwinds the save, which has already committed by this point.
+function sendOpportunityPostedEmail_(email, record){
+  try{
+    const company = record.company || 'the company';
+    const analysis = record.analysis;
+    const matchCount = analysis && Array.isArray(analysis.matches) ? analysis.matches.length : 0;
+    const referralCount = analysis && typeof analysis.referralContactsNotified === 'number' ? analysis.referralContactsNotified : 0;
+    let statusLine;
+    if(!analysis){
+      statusLine = 'AI matching against resumes was not run for this posting.';
+    }else if(matchCount){
+      statusLine = matchCount + ' matching candidate' + (matchCount === 1 ? '' : 's') + ' ' + (matchCount === 1 ? 'was' : 'were') + ' found and notified'
+        + (referralCount ? ', and ' + referralCount + ' referral contact' + (referralCount === 1 ? '' : 's') + ' at ' + company + ' ' + (referralCount === 1 ? 'was' : 'were') + ' notified.' : '.');
+    }else{
+      statusLine = 'No matching candidates were found at this time.';
+    }
+    MailApp.sendEmail(email, 'Your opportunity at ' + company + ' has been posted',
+      'Hi,\n\nYour opportunity at ' + company + ' has been posted to the Company Contact Book.\n\n' + statusLine
+      + '\n\nWishing you all the best.\n\nIf you did not request this, please ignore this email.',
+      {name: MAIL_SENDER_NAME});
+  }catch(error){ console.error('Opportunity posted email failed', error); }
 }

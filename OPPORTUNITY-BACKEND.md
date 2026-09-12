@@ -67,6 +67,32 @@ contact. The count of
 contacts notified is returned as `analysis.referralContactsNotified` and shown
 in the post-save status line alongside the candidate match count.
 
+**Matching runs exactly once, at post time.** It scores against whichever
+resumes are already analyzed at that moment - it does not re-run later against
+resumes uploaded afterward, and there is no periodic re-check. A posting made
+before a matching resume existed will legitimately show zero matches and send
+no match emails, even if a matching resume is added minutes later. There is no
+bug to fix here as such, just a real limitation worth knowing about: if this
+turns out to matter in practice, the fix would be a periodic job (like
+`retryResumeAnalysis`) that re-matches recent postings against newly analyzed
+resumes.
+
+Independent of all of the above, `sendOpportunityPostedEmail_` (in `Code.gs`)
+always emails the **poster** - the verified sign-in email `saveOpportunity`
+already trusts, not anything supplied in the request - confirming their
+opportunity was posted, once the save (and any AI analysis) has finished. It
+says how many candidates and referral contacts were already notified when
+analysis found matches, "No matching candidates were found at this time" when
+it ran but found none, or that AI matching did not run when
+`analyzePostedOpportunity` isn't wired in. Like the other notification emails,
+a failure here is logged and swallowed - it never blocks or unwinds the save.
+
+Every email this app sends (welcome, resume upload, opportunity match,
+referral match, and this poster confirmation) now passes `{name: 'Company
+Contact Book'}` as the `MailApp.sendEmail` sender-name option, so recipients
+see "Company Contact Book <the-deploying-account@gmail.com>" instead of just
+the raw deploying Gmail address with no label.
+
 Approved members can submit and reload their latest 100 submissions. The backend
 additionally requires the signed-in email to match the Email of a named contact
 in ReferrerContact before posting. Owner Email does not qualify: it may identify
