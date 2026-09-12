@@ -3,7 +3,12 @@ const assert=require('node:assert/strict');
 const vm=require('node:vm');
 const fs=require('node:fs');
 test('login bundles data after approval with one verification and one contact read',()=>{
-  const c=vm.createContext({}); vm.runInContext(fs.readFileSync('apps-script/Code.gs','utf8'),c);
+  const c=vm.createContext({
+    PropertiesService:{getScriptProperties:()=>({getProperty:()=>null,setProperty(){}})},
+    Utilities:{getUuid:()=>'uuid',base64Encode:v=>Buffer.from(v).toString('base64'),
+      computeHmacSha256Signature:(v,k)=>require('node:crypto').createHmac('sha256',k).update(String(v)).digest()}
+  });
+  vm.runInContext(fs.readFileSync('apps-script/Code.gs','utf8'),c);
   let verified=0, reads=0, approved=true;
   c.json=value=>value;
   c.verifyToken=()=>{verified++;return {email:'a@example.com',sub:'id',name:'Alice'};};
@@ -13,6 +18,7 @@ test('login bundles data after approval with one verification and one contact re
   const event={postData:{contents:JSON.stringify({action:'membership',includeBootstrap:true,idToken:'token'})}};
   const result=c.doPost(event);
   assert.equal(verified,1);assert.equal(reads,1);assert.equal(result.profile.name,'Alice');assert.equal(result.contacts.Acme.length,1);
+  assert.ok(result.sessionToken); assert.equal(result.sessionExpiresInMs,8*60*60*1000);
   approved=false; const denied=c.doPost(event);
   assert.equal(denied.approved,false);assert.equal(denied.contacts,undefined);assert.equal(reads,1);
 });

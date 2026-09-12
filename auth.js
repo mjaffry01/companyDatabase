@@ -2,27 +2,35 @@
 // Access is granted only after the administrator approves the signed-in Google account
 // in the "Members" tab of the backing spreadsheet (see apps-script/Code.gs).
 window.idToken = null;
-let accessRequest = null;
+window.sessionToken = null;
+let authGeneration = 0; // bumped on every sign-in attempt / sign-out so in-flight requests can detect they're stale
+let accessRequest = null; // the authGeneration currently being checked, to dedupe concurrent checkAccess() calls
 
-// Google ID tokens are short-lived (about an hour) by design, and the backend
-// re-verifies one on every request via Google's tokeninfo endpoint - caching
-// it here is just a client-side copy of the same token, not a new trust
-// boundary or a longer-lived credential. Caching it means a page refresh
-// does not force a fresh "Sign in with Google" click; once the cached token
-// has actually expired, initGoogleSignIn() falls back to Google's silent
-// One Tap re-auth (auto_select + google.accounts.id.prompt()) before ever
-// showing the sign-in button, so a returning member with an active Google
-// browser session stays signed in well past 8 hours without clicking
-// anything. Only an explicit "Sign out" clears the cache and turns this off.
-const ID_TOKEN_STORAGE_KEY = 'companyContactBook.idToken';
-function saveIdToken(token){
-  try{ localStorage.setItem(ID_TOKEN_STORAGE_KEY, token); }catch(error){ /* private mode / storage blocked - session just won't survive a refresh */ }
+// contactApi() (index.html) sends sessionToken when we have one, idToken otherwise.
+// Other files (profile.js) use this to guard against a stale response after the
+// user signs out or in again mid-request, without caring which credential type is active.
+window.currentCredential = function(){ return window.sessionToken || window.idToken; };
+
+// The backend issues its own sessionToken (HMAC-signed, ~8h validity - see
+// Code.gs's "Session tokens" note) once a sign-in is confirmed approved. That,
+// not the raw Google idToken (which itself only lasts about an hour and can't
+// be silently renewed in every browser - FedCM/third-party-cookie support
+// varies), is what gets cached across a refresh: contactApi() sends
+// sessionToken once we have one, so a refresh restores it here and the
+// backend accepts it directly with no round-trip to Google at all, until the
+// full ~8h session actually elapses. Only then does the app fall back to a
+// fresh Google sign-in (silently via One Tap when the browser allows it,
+// otherwise the visible "Sign in with Google" button). Only an explicit
+// "Sign out" clears the cache and disables the silent One Tap re-auth.
+const SESSION_TOKEN_STORAGE_KEY = 'companyContactBook.sessionToken';
+function saveSessionToken(token){
+  try{ localStorage.setItem(SESSION_TOKEN_STORAGE_KEY, token); }catch(error){ /* private mode / storage blocked - session just won't survive a refresh */ }
 }
-function clearSavedIdToken(){
-  try{ localStorage.removeItem(ID_TOKEN_STORAGE_KEY); }catch(error){ /* ignore */ }
+function clearSavedSessionToken(){
+  try{ localStorage.removeItem(SESSION_TOKEN_STORAGE_KEY); }catch(error){ /* ignore */ }
 }
-function loadSavedIdToken(){
-  try{ return localStorage.getItem(ID_TOKEN_STORAGE_KEY); }catch(error){ return null; }
+function loadSavedSessionToken(){
+  try{ return localStorage.getItem(SESSION_TOKEN_STORAGE_KEY); }catch(error){ return null; }
 }
 
 function authStatusEl(){ return document.getElementById('authStatus'); }
@@ -42,34 +50,36 @@ function showSignedInUI(){
 
 async function handleCredentialResponse(response){
   window.idToken = response.credential;
-  saveIdToken(response.credential);
+  window.sessionToken = null; // a fresh Google sign-in always re-establishes the session from scratch
+  authGeneration++;
   showSignedInUI();
   authStatusEl().textContent = 'Checking your access…';
   await checkAccess();
 }
 
-// Returns true when the backend accepted the current idToken (whether the
+// Returns true when the backend accepted the current credential (whether the
 // account is approved yet or still pending), and false when it was rejected
 // outright (expired, revoked, wrong audience, etc.) - used by
-// tryRestoreSession() to decide whether a cached token is still good.
+// tryRestoreSession() to decide whether a cached session is still good.
 async function checkAccess(){
-  if(!window.idToken){ showSignedOutUI(); return false; }
-  const token = window.idToken;
-  if(accessRequest === token) return true;
-  accessRequest = token;
+  if(!window.currentCredential()){ showSignedOutUI(); return false; }
+  const gen = authGeneration;
+  if(accessRequest === gen) return true;
+  accessRequest = gen;
   const checkBtn = document.getElementById('checkAccessBtn');
   checkBtn.disabled = true;
   let tokenAccepted = true;
   try{
     const result = await contactApi('membership', {includeBootstrap:true});
-    if(token !== window.idToken) return true;
+    if(gen !== authGeneration) return true;
+    if(result.sessionToken){ window.sessionToken = result.sessionToken; saveSessionToken(result.sessionToken); }
     if(!result.approved){
       authStatusEl().textContent = 'New accounts are auto-approved within 3 minutes, or sooner when an administrator approves you. Tap "Check access" to retry.';
       return true;
     }
     authStatusEl().textContent = 'Loading your contacts…';
     await window.init(result);
-    if(token !== window.idToken) return true;
+    if(gen !== authGeneration) return true;
     if(result.profile){
       applyOpportunityProfile(result.profile);
       setProfileName(result.profile.name);
@@ -78,35 +88,38 @@ async function checkAccess(){
       void loadProfileName();
     }
   }catch(error){
-    if(token !== window.idToken) return true;
+    if(gen !== authGeneration) return true;
     authStatusEl().textContent = error.message || 'Could not check access. Try again.';
     tokenAccepted = false;
   }finally{
-    if(accessRequest === token) accessRequest = null;
-    if(token === window.idToken) checkBtn.disabled = false;
+    if(accessRequest === gen) accessRequest = null;
+    if(gen === authGeneration) checkBtn.disabled = false;
   }
   return tokenAccepted;
 }
 
 // Called once at page load (from initGoogleSignIn) to avoid forcing a fresh
-// sign-in click on every refresh: try the cached token first, and drop it
-// only if the backend actually rejects it.
+// sign-in click on every refresh: try the cached session token first, and
+// drop it only if the backend actually rejects it.
 async function tryRestoreSession(){
-  const cached = loadSavedIdToken();
+  const cached = loadSavedSessionToken();
   if(!cached) return;
-  window.idToken = cached;
+  window.sessionToken = cached;
+  authGeneration++;
   showSignedInUI();
   authStatusEl().textContent = 'Checking your access…';
   const ok = await checkAccess();
   if(ok) return;
-  window.idToken = null;
-  clearSavedIdToken();
+  window.sessionToken = null;
+  clearSavedSessionToken();
   showSignedOutUI();
 }
 
 function logout(){
   window.idToken = null;
-  clearSavedIdToken();
+  window.sessionToken = null;
+  authGeneration++;
+  clearSavedSessionToken();
   if(window.google && google.accounts && google.accounts.id) google.accounts.id.disableAutoSelect();
   window.clearContactSession();
   document.getElementById('authGate').hidden = false;
@@ -148,7 +161,7 @@ async function initGoogleSignIn(){
     google.accounts.id.renderButton(document.getElementById('googleSignInDiv'), { theme:'outline', size:'large', text:'signin_with' });
     showSignedOutUI();
     await tryRestoreSession();
-    if(!window.idToken){
+    if(!window.currentCredential()){
       // No usable cached session - try Google's silent One Tap re-auth (only
       // does anything if this browser still has an active Google session
       // that previously signed in here) before leaving the explicit

@@ -6,10 +6,10 @@ function setProfileName(name){
 }
 async function loadProfileName(){
   const generation = profileGeneration;
-  const token = window.idToken;
+  const token = window.currentCredential();
   try{
     const result = await contactApi('profile', {});
-    if(generation === profileGeneration && token === window.idToken){
+    if(generation === profileGeneration && token === window.currentCredential()){
       setProfileName(result.profile?.name);
       if(result.profile) applyOpportunityProfile(result.profile);
     }
@@ -36,7 +36,7 @@ function renderUserProfile(profile){
   document.getElementById('profileStatusForm').hidden = false;
 }
 async function openUserProfile(){
-  if(!window.idToken) return;
+  if(!window.currentCredential()) return;
   const generation = ++profileGeneration;
   const dialog = document.getElementById('profileDialog');
   if(!dialog.open) dialog.showModal();

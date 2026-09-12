@@ -558,12 +558,15 @@ async function init(bootstrap){
 }
 
 async function contactApi(action, data){
-  if(!window.idToken) throw new Error('Please sign in first.');
+  if(!window.currentCredential()) throw new Error('Please sign in first.');
   if(!window.APPS_SCRIPT_URL || window.APPS_SCRIPT_URL.indexOf('PASTE_') === 0) throw new Error('The contact book backend is not configured yet.');
+  // Prefer the backend-issued sessionToken (long-lived, verified locally) once we have
+  // one; fall back to the raw Google idToken only for the very first request of a sign-in.
+  const auth = window.sessionToken ? {sessionToken: window.sessionToken} : {idToken: window.idToken};
   const response = await fetch(window.APPS_SCRIPT_URL, {
     method: 'POST',
     headers: {'Content-Type': 'text/plain;charset=utf-8'},
-    body: JSON.stringify({idToken: window.idToken, action, ...data}),
+    body: JSON.stringify({...auth, action, ...data}),
     cache: 'no-store'
   });
   if(!response.ok) throw new Error('Server returned ' + response.status);
@@ -586,14 +589,14 @@ window.clearContactSession = function(){
 };
 
 async function connect(bootstrap){
-  const token = window.idToken;
+  const token = window.currentCredential();
   const checkBtn = document.getElementById('checkAccessBtn');
   checkBtn.disabled = true;
   try{
     const [compJson, contJson] = bootstrap?.companies && bootstrap?.contacts
       ? [bootstrap, bootstrap]
       : await Promise.all([contactApi('companies'), contactApi('contacts')]);
-    if(token !== window.idToken) return;
+    if(token !== window.currentCredential()) return;
     companies = compJson.companies || [];
     ledger = normalizeContacts(contJson.contacts || {});
     document.getElementById('authGate').hidden = true;
@@ -603,12 +606,12 @@ async function connect(bootstrap){
     renderAll();
     if(currentTab === 'lookup') renderLookup();
   }catch(err){
-    if(token !== window.idToken) return;
+    if(token !== window.currentCredential()) return;
     document.getElementById('authStatus').textContent = 'Could not load contacts: ' + err.message;
     document.getElementById('authGate').hidden = false;
     document.getElementById('ledgerRoot').hidden = true;
   }finally{
-    if(token === window.idToken) checkBtn.disabled = false;
+    if(token === window.currentCredential()) checkBtn.disabled = false;
   }
 }
 
@@ -642,7 +645,7 @@ function normalizeContacts(raw){
 }
 
 async function refreshContacts(){
-  if(!window.idToken) return;
+  if(!window.currentCredential()) return;
   try{
     const json = await contactApi('contacts');
     if(json.error) throw new Error(json.error);

@@ -21,18 +21,37 @@ Blaze plan (a card on file) even for $0 actual usage. That code is kept for refe
    company or contact data is returned. New sign-ins are recorded automatically as
    `Approved = FALSE`.
 
-## Staying signed in across refreshes
+## Staying signed in across refreshes (session tokens)
 
-Google's ID tokens are short-lived (about an hour) by design, and the backend still
-re-verifies one on every request per step 4 above — that has not changed. What changed is
-the *frontend*: `auth.js` now caches the current token in `localStorage` and restores it on
-page load (`tryRestoreSession()`), so refreshing the tab no longer drops back to the sign-in
-button. When the cached token has actually expired, the frontend falls back to Google's
-silent One Tap re-auth (`auto_select: true` + `google.accounts.id.prompt()`) before ever
-showing the button again — this reissues a fresh token with no visible UI as long as the
-browser still has an active Google session that previously signed in here. Together, a
-returning member stays signed in well past 8 hours without re-clicking "Sign in with
-Google"; only an explicit "Sign out" clears the cache and disables the silent re-auth.
+A raw Google ID token only lasts about an hour, and *silently* renewing it depends on the
+browser supporting FedCM or allowing third-party cookies for Google's One Tap - Safari and
+Firefox block that by default, and Chrome is moving the same direction. Relying on that
+alone meant many real users still got bounced back to the sign-in button after about an
+hour, even though a page refresh alone no longer did.
+
+To actually guarantee a signed-in member stays signed in for a full 8 hours regardless of
+browser, the backend now issues its own **session token** once a sign-in is confirmed
+approved:
+
+- `membership` responses include `sessionToken` (a compact, HMAC-signed credential good for
+  `SESSION_TOKEN_TTL_MS`, 8 hours) alongside the usual `approved`/`companies`/`contacts`
+  payload. `issueSessionToken_`/`verifySessionToken_`/`resolveIdentity_` in `Code.gs` do the
+  issuing and verifying; see the file header's "Session tokens" note for the exact format
+  and trust model.
+- The signing key (`SESSION_SECRET`) lives in Script Properties and is generated
+  automatically on first use - there is nothing to configure. Deleting that property
+  invalidates every outstanding session at once (e.g. if it ever needs rotating).
+- `auth.js` caches `sessionToken` (not the raw idToken) in `localStorage` and sends it on
+  every request once it has one (`contactApi()` in `index.html` prefers `sessionToken` over
+  `idToken`). A refresh restores it from `localStorage` and the backend accepts it directly
+  - no round trip to Google at all - until the full 8 hours actually elapse.
+- Only once the session token itself expires does the frontend fall back to Google's silent
+  One Tap re-auth, and only if *that* also fails does it show the visible "Sign in with
+  Google" button. An explicit "Sign out" clears the cached session token and disables the
+  silent re-auth (`google.accounts.id.disableAutoSelect()`), so it actually signs out.
+- This applies uniformly: every `doPost` action resolves identity once via
+  `resolveIdentity_(body)`, which accepts either `sessionToken` or `idToken` in the request
+  body - individual actions never need their own auth logic.
 
 ## Setup steps
 

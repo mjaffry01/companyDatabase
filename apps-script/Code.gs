@@ -19,14 +19,34 @@
  * 5. Copy the resulting /exec URL into auth-config.js as APPS_SCRIPT_URL.
  *
  * Security model:
- * - Every request must carry a Google ID token (idToken) obtained from the
- *   Google Identity Services "Sign in with Google" button on the frontend.
- * - The token is verified against the tokeninfo endpoint Google provides, on every
- *   request (audience, issuer, email_verified are all checked).
+ * - Every request must carry either a Google ID token (idToken) obtained from
+ *   the Google Identity Services "Sign in with Google" button on the
+ *   frontend, or a sessionToken this backend issued itself after a prior
+ *   successful sign-in (see "Session tokens" below).
+ * - An idToken is verified against the tokeninfo endpoint Google provides, on
+ *   every request (audience, issuer, email_verified are all checked).
  * - The verified email must exist in the "Members" sheet tab with
  *   Approved = TRUE before any company/contact data is returned.
  * - New sign-ins are recorded automatically as Approved = FALSE; the
  *   administrator flips that to TRUE by hand after verifying the person.
+ *
+ * Session tokens (stay signed in across a refresh, past Google's own ~1hr
+ * idToken lifetime, for up to SESSION_TOKEN_TTL_MS):
+ * - Once a sign-in is confirmed approved, the "membership" response includes
+ *   a sessionToken: base64(JSON {email,name,exp}) + "." + a base64 HMAC-SHA256
+ *   signature of that payload, keyed by a per-deployment secret
+ *   (SESSION_SECRET in Script Properties, auto-generated on first use - never
+ *   logged, never sent to the frontend).
+ * - The frontend then sends that sessionToken instead of idToken on every
+ *   subsequent request until it expires. resolveIdentity_() verifies the
+ *   signature and expiry locally (no external call, unlike idToken) and
+ *   trusts the embedded email - exactly as much trust as the idToken path
+ *   already places in a verified Google sign-in, just cached for longer.
+ * - This is a bearer token: anyone holding it can act as that member until it
+ *   expires or the secret is rotated (delete SESSION_SECRET from Script
+ *   Properties to invalidate every outstanding session at once). It is
+ *   stored client-side in localStorage, the same place idToken was already
+ *   cached, so this does not lower the frontend's storage trust boundary.
  */
 
 // ---- Fill this in ----
@@ -72,16 +92,18 @@ function doGet(e){
 function doPost(e){
   try{
     const body = JSON.parse((e.postData && e.postData.contents) || '{}');
-    const payload = verifyToken(body.idToken);
-    const email = payload.email;
+    const identity = resolveIdentity_(body);
+    const email = identity.email;
     const action = body.action;
 
     if(action === 'membership'){
-      const approved = checkMembership(email, payload.sub);
-      if(!approved || body.includeBootstrap !== true) return json({approved:approved});
+      const approved = checkMembership(email, identity.sub);
+      if(!approved) return json({approved:false});
+      const session = {sessionToken: issueSessionToken_(email, identity.name), sessionExpiresInMs: SESSION_TOKEN_TTL_MS};
+      if(body.includeBootstrap !== true) return json(Object.assign({approved:true}, session));
       const contacts = getContacts();
-      return json({approved:true, companies:getCompanies(), contacts:contacts,
-        profile:getOpportunityProfile(email, contacts, payload.name)});
+      return json(Object.assign({approved:true, companies:getCompanies(), contacts:contacts,
+        profile:getOpportunityProfile(email, contacts, identity.name)}, session));
     }
 
     if(!isApproved(email)){
@@ -101,8 +123,8 @@ function doPost(e){
     if(action === 'myResumes') return json({ resumes: myResumes(email) });
     if(action === 'deleteResume') return json(deleteResume(email, body));
     if(action === 'opportunityProfile') return json({ profile: getOpportunityProfile(email) });
-    if(action === 'profile') return json({ profile: getUserProfile(email, payload.name) });
-    if(action === 'saveWorkStatus') return json(saveWorkStatus(email, body.workStatus, payload.name));
+    if(action === 'profile') return json({ profile: getUserProfile(email, identity.name) });
+    if(action === 'saveWorkStatus') return json(saveWorkStatus(email, body.workStatus, identity.name));
     if(action === 'opportunities') return json({ opportunities: getOpportunities(email), profile: getOpportunityProfile(email) });
     if(action === 'saveOpportunity') return json(saveOpportunity(email, body));
     if(action === 'compareResumeFit'){
@@ -114,6 +136,21 @@ function doPost(e){
   }catch(error){
     return json({ error: (error && error.message) || String(error) });
   }
+}
+
+// Accepts either a fresh Google idToken (verified against Google on every
+// call) or a sessionToken this backend issued earlier (verified locally,
+// valid up to SESSION_TOKEN_TTL_MS from issuance) - see the "Session tokens"
+// note in the file header. Every action goes through this single entry
+// point, so session-token support applies uniformly without each action
+// needing its own auth logic.
+function resolveIdentity_(body){
+  if(body.sessionToken){
+    const session = verifySessionToken_(body.sessionToken);
+    return {email: session.email, name: session.name || '', sub: ''};
+  }
+  const payload = verifyToken(body.idToken);
+  return {email: payload.email, name: payload.name || '', sub: payload.sub || ''};
 }
 
 // ---- Google ID token verification ----
@@ -133,6 +170,44 @@ function verifyToken(idToken){
     throw new Error('Invalid token issuer.');
   }
   return payload; // { email, sub, email_verified, aud, iss, ... }
+}
+
+// ---- Session tokens (see the file header's "Session tokens" note) ----
+const SESSION_TOKEN_TTL_MS = 8 * 60 * 60 * 1000; // 8 hours
+
+function getSessionSecret_(){
+  const props = PropertiesService.getScriptProperties();
+  let secret = props.getProperty('SESSION_SECRET');
+  if(!secret){
+    secret = Utilities.getUuid() + Utilities.getUuid();
+    props.setProperty('SESSION_SECRET', secret);
+  }
+  return secret;
+}
+
+function issueSessionToken_(email, name){
+  const payloadPart = Utilities.base64Encode(JSON.stringify({email: email, name: name || '', exp: Date.now() + SESSION_TOKEN_TTL_MS}));
+  const signaturePart = Utilities.base64Encode(Utilities.computeHmacSha256Signature(payloadPart, getSessionSecret_()));
+  return payloadPart + '.' + signaturePart;
+}
+
+function verifySessionToken_(token){
+  if(typeof token !== 'string' || token.split('.').length !== 2){
+    throw new Error('Your session is invalid. Please sign in again.');
+  }
+  const [payloadPart, signaturePart] = token.split('.');
+  const expectedSignature = Utilities.base64Encode(Utilities.computeHmacSha256Signature(payloadPart, getSessionSecret_()));
+  if(expectedSignature !== signaturePart){
+    throw new Error('Your session is invalid. Please sign in again.');
+  }
+  let session;
+  try{ session = JSON.parse(Utilities.newBlob(Utilities.base64Decode(payloadPart)).getDataAsString('UTF-8')); }
+  catch(error){ throw new Error('Your session is invalid. Please sign in again.'); }
+  if(!session || typeof session.email !== 'string' || typeof session.exp !== 'number'){
+    throw new Error('Your session is invalid. Please sign in again.');
+  }
+  if(Date.now() > session.exp) throw new Error('Your session expired. Please sign in again.');
+  return session; // { email, name, exp }
 }
 
 // ---- Membership (approval) ----
