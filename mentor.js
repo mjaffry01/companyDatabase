@@ -5,6 +5,42 @@ let pendingRatings = {};
 function toggleChip(chip){ chip.classList.toggle('on'); }
 document.querySelectorAll('#m-expertise .chip-opt, #s-field .chip-opt').forEach(chip => chip.addEventListener('click', () => toggleChip(chip)));
 
+// Field-level validation: pinpoints which field is wrong instead of one
+// generic banner message, and clears itself the moment the field becomes
+// valid again rather than waiting for the next submit attempt.
+function setFieldError(el, message){
+  const field = el.closest('.field');
+  if(!field) return;
+  field.classList.toggle('invalid', !!message);
+  let err = field.querySelector('.field-error');
+  if(message){
+    if(!err){ err = document.createElement('div'); err.className = 'field-error'; field.appendChild(err); }
+    err.textContent = message;
+  }else if(err){ err.remove(); }
+}
+function isValidPhone(value){
+  const digits = String(value || '').replace(/[^\d]/g, '');
+  return digits.length === 0 || (digits.length >= 7 && digits.length <= 15);
+}
+function wireLiveValidation(id, validate){
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.addEventListener('blur', () => setFieldError(el, validate(el.value)));
+  el.addEventListener('input', () => { if(el.closest('.field')?.classList.contains('invalid')) setFieldError(el, validate(el.value)); });
+}
+const requiredText = v => v.trim() ? '' : 'This field is required.';
+const yearsRange = v => { if(!v.trim()) return ''; const n = Number(v); return Number.isFinite(n) && n >= 0 && n <= 60 ? '' : 'Enter a number between 0 and 60.'; };
+const slotsRange = v => { if(!v.trim()) return ''; const n = Number(v); return Number.isInteger(n) && n >= 1 && n <= 20 ? '' : 'Enter a whole number between 1 and 20.'; };
+const phoneFormat = v => isValidPhone(v) ? '' : 'Enter a valid phone number (7-15 digits).';
+wireLiveValidation('m-name', requiredText);
+wireLiveValidation('m-role', requiredText);
+wireLiveValidation('m-company', requiredText);
+wireLiveValidation('m-phone', phoneFormat);
+wireLiveValidation('m-years', yearsRange);
+wireLiveValidation('m-slots', slotsRange);
+wireLiveValidation('s-name', requiredText);
+wireLiveValidation('s-phone', phoneFormat);
+
 function getSelectedChips(containerId){
   return Array.from(document.querySelectorAll('#' + containerId + ' .chip-opt.on')).map(chip => chip.textContent);
 }
@@ -17,8 +53,11 @@ function resetMentorSession(){
   mentorSession++;
   mentorState = { mentorProfile:null, seekerProfile:null, mentors:[], seekers:[], matches:[] };
   pendingRatings = {};
-  ['m-name','m-role','m-company','m-phone','m-years','m-slots','m-note','m-rate','s-name','s-phone','s-note'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
-  ['m-contact-pref','s-status','s-contact-pref'].forEach(id => { const el = document.getElementById(id); if(el) el.value = ''; });
+  ['m-name','m-role','m-company','m-phone','m-years','m-slots','m-note','m-rate','s-name','s-phone','s-note'].forEach(id => { const el = document.getElementById(id); if(el){ el.value = ''; setFieldError(el, ''); } });
+  ['m-contact-pref','s-status','s-contact-pref'].forEach(id => { const el = document.getElementById(id); if(el){ el.value = ''; setFieldError(el, ''); } });
+  document.getElementById('m-expertise').classList.remove('invalid');
+  document.getElementById('s-field').classList.remove('invalid');
+  document.getElementById('m-undertaking-row').classList.remove('invalid');
   document.getElementById('m-paid').checked = false;
   document.getElementById('m-rate-wrap').hidden = true;
   document.getElementById('m-undertaking').checked = false;
@@ -104,24 +143,45 @@ async function loadMentorData(){
 }
 
 async function registerMentor(){
-  const name = document.getElementById('m-name').value.trim();
-  const role = document.getElementById('m-role').value.trim();
-  const company = document.getElementById('m-company').value.trim();
-  const phone = document.getElementById('m-phone').value.trim();
+  const nameEl = document.getElementById('m-name'), roleEl = document.getElementById('m-role'), companyEl = document.getElementById('m-company');
+  const phoneEl = document.getElementById('m-phone'), yearsEl = document.getElementById('m-years'), slotsEl = document.getElementById('m-slots'), rateEl = document.getElementById('m-rate');
+  const name = nameEl.value.trim(), role = roleEl.value.trim(), company = companyEl.value.trim(), phone = phoneEl.value.trim();
   const contactPref = document.getElementById('m-contact-pref').value;
   const expertise = getSelectedChips('m-expertise');
-  const years = Number(document.getElementById('m-years').value);
-  const slots = Number(document.getElementById('m-slots').value);
+  const years = Number(yearsEl.value);
+  const slots = Number(slotsEl.value);
   const note = document.getElementById('m-note').value.trim();
-  const paid = document.getElementById('m-paid').checked;
-  const rate = document.getElementById('m-rate').value.trim();
+  const paid = document.getElementById('m-paid').checked; // stays optional throughout — only its rate is ever required, and only when this is checked
+  const rate = rateEl.value.trim();
   const undertakingAccepted = document.getElementById('m-undertaking').checked;
   const noteEl = document.getElementById('mentorFormNote');
-  if(!name || !role || !company){ noteEl.textContent = 'Fill in your name, role and company.'; noteEl.classList.remove('ok'); return; }
-  if(!expertise.length){ noteEl.textContent = 'Pick at least one area you can guide in.'; noteEl.classList.remove('ok'); return; }
-  if(!Number.isInteger(slots) || slots < 1){ noteEl.textContent = 'Enter how many mentees you can take.'; noteEl.classList.remove('ok'); return; }
-  if(paid && !rate){ noteEl.textContent = 'Enter your rate, or uncheck paid mentorship.'; noteEl.classList.remove('ok'); return; }
-  if(!undertakingAccepted){ noteEl.textContent = 'Please accept the mentor undertaking to register.'; noteEl.classList.remove('ok'); return; }
+  const chipGroup = document.getElementById('m-expertise');
+  const undertakingRow = document.getElementById('m-undertaking-row');
+
+  let firstInvalid = null;
+  const flag = (el, message) => { setFieldError(el, message); if(message && !firstInvalid) firstInvalid = el; };
+  flag(nameEl, requiredText(name));
+  flag(roleEl, requiredText(role));
+  flag(companyEl, requiredText(company));
+  flag(phoneEl, phoneFormat(phone));
+  flag(yearsEl, requiredText(yearsEl.value) || yearsRange(yearsEl.value));
+  flag(slotsEl, requiredText(slotsEl.value) || slotsRange(slotsEl.value));
+  flag(rateEl, paid && !rate ? 'Enter your rate, or uncheck paid mentorship above.' : (paid && rate && !/\d/.test(rate) ? 'Include a number in your rate (e.g. ₹500 per session).' : ''));
+
+  const expertiseOk = expertise.length > 0;
+  chipGroup.classList.toggle('invalid', !expertiseOk);
+  if(!expertiseOk && !firstInvalid) firstInvalid = chipGroup;
+
+  undertakingRow.classList.toggle('invalid', !undertakingAccepted);
+  if(!undertakingAccepted && !firstInvalid) firstInvalid = document.getElementById('m-undertaking');
+
+  if(firstInvalid){
+    noteEl.textContent = !expertiseOk ? 'Pick at least one area you can guide in.' : !undertakingAccepted ? 'Please accept the mentor undertaking to register.' : 'Fix the highlighted field.';
+    noteEl.classList.remove('ok');
+    firstInvalid.focus();
+    return;
+  }
+
   const btn = document.getElementById('mentorSaveBtn');
   btn.disabled = true; noteEl.textContent = 'Saving…'; noteEl.classList.remove('ok');
   try{
@@ -135,16 +195,34 @@ async function registerMentor(){
 }
 
 async function registerSeeker(){
-  const name = document.getElementById('s-name').value.trim();
-  const phone = document.getElementById('s-phone').value.trim();
+  const nameEl = document.getElementById('s-name'), phoneEl = document.getElementById('s-phone'), statusEl = document.getElementById('s-status'), noteInputEl = document.getElementById('s-note');
+  const name = nameEl.value.trim();
+  const phone = phoneEl.value.trim();
   const contactPref = document.getElementById('s-contact-pref').value;
-  const status = document.getElementById('s-status').value;
+  const status = statusEl.value;
   const field = getSelectedChips('s-field');
-  const note = document.getElementById('s-note').value.trim();
+  const note = noteInputEl.value.trim();
   const noteEl = document.getElementById('seekerFormNote');
-  if(!name || !status){ noteEl.textContent = 'Fill in your name and situation.'; noteEl.classList.remove('ok'); return; }
-  if(!field.length){ noteEl.textContent = 'Pick at least one field you want guidance in.'; noteEl.classList.remove('ok'); return; }
-  if(!note){ noteEl.textContent = 'Add a line about what help you need.'; noteEl.classList.remove('ok'); return; }
+  const chipGroup = document.getElementById('s-field');
+
+  let firstInvalid = null;
+  const flag = (el, message) => { setFieldError(el, message); if(message && !firstInvalid) firstInvalid = el; };
+  flag(nameEl, requiredText(name));
+  flag(phoneEl, phoneFormat(phone));
+  flag(statusEl, status ? '' : 'Choose your situation.');
+  flag(noteInputEl, requiredText(note));
+
+  const fieldOk = field.length > 0;
+  chipGroup.classList.toggle('invalid', !fieldOk);
+  if(!fieldOk && !firstInvalid) firstInvalid = chipGroup;
+
+  if(firstInvalid){
+    noteEl.textContent = !fieldOk ? 'Pick at least one field you want guidance in.' : 'Fix the highlighted field.';
+    noteEl.classList.remove('ok');
+    firstInvalid.focus();
+    return;
+  }
+
   const btn = document.getElementById('seekerSaveBtn');
   btn.disabled = true; noteEl.textContent = 'Saving…'; noteEl.classList.remove('ok');
   try{

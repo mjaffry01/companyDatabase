@@ -1240,6 +1240,14 @@ const MENTOR_MATCHES_SHEET = 'MentorMatches';
 const MENTOR_STATUSES = ['Recent graduate', 'Recently lost my job', 'Switching fields'];
 const MENTOR_CONTACT_PREFS = ['Email', 'Call', 'WhatsApp'];
 
+// Mirrors the frontend's isValidPhone: optional field, but if given it must
+// look like a real phone number (7-15 digits once punctuation is stripped) -
+// the backend must not accept anything the frontend would already reject.
+function validMentorPhone_(value){
+  const digits = String(value || '').replace(/[^\d]/g, '');
+  return digits.length === 0 || (digits.length >= 7 && digits.length <= 15);
+}
+
 function rowToMentor_(row){
   return {
     email: String(row[0] || ''), name: row[1] || '', role: row[2] || '', company: row[3] || '',
@@ -1327,6 +1335,7 @@ function upsertMentorProfile(email, data){
   const company = clampText(data.company, 150);
   if(!company) throw new Error('Enter your company.');
   const phone = clampText(data.phone, 30);
+  if(!validMentorPhone_(phone)) throw new Error('Enter a valid phone number (7-15 digits), or leave it blank.');
   const contactPref = MENTOR_CONTACT_PREFS.includes(data.contactPref) ? data.contactPref : '';
   const expertise = (Array.isArray(data.expertise) ? data.expertise : []).map(v => clampText(v, 40)).filter(Boolean).slice(0, 10);
   if(!expertise.length) throw new Error('Pick at least one area you can guide in.');
@@ -1334,9 +1343,10 @@ function upsertMentorProfile(email, data){
   if(!Number.isFinite(years) || years < 0 || years > 60) throw new Error('Enter a valid number of years of experience.');
   const slots = Number(data.slots);
   if(!Number.isInteger(slots) || slots < 1 || slots > 20) throw new Error('Enter how many mentees you can take (1-20).');
-  const paid = !!data.paid;
+  const paid = !!data.paid; // paid mentorship is always optional - only its rate is ever required, and only when this is true
   const rate = paid ? clampText(data.rate, 60) : '';
   if(paid && !rate) throw new Error('Enter your rate (e.g. ₹500 per session).');
+  if(paid && !/\d/.test(rate)) throw new Error('Include a number in your rate (e.g. ₹500 per session).');
   const note = clampText(data.note, 600);
   if(!data.undertakingAccepted) throw new Error('Please accept the mentor undertaking before registering.');
 
@@ -1361,6 +1371,7 @@ function upsertSeekerProfile(email, data){
   const name = clampText(data.name, 150);
   if(!name) throw new Error('Enter your name.');
   const phone = clampText(data.phone, 30);
+  if(!validMentorPhone_(phone)) throw new Error('Enter a valid phone number (7-15 digits), or leave it blank.');
   const contactPref = MENTOR_CONTACT_PREFS.includes(data.contactPref) ? data.contactPref : '';
   const status = MENTOR_STATUSES.includes(data.status) ? data.status : '';
   if(!status) throw new Error('Choose your situation.');

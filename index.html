@@ -32,6 +32,18 @@
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;}
+  input, textarea, select, button{ font-family:inherit; }
+  input[type="checkbox"]{ width:17px; height:17px; accent-color:var(--teal); cursor:pointer; flex-shrink:0; }
+  select{
+    padding: 9px 34px 9px 10px; border: 1px solid var(--paper-line); border-radius: 6px;
+    font-size:14px; background:#fff url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6"><path d="M0 0l5 6 5-6z" fill="%236B6252"/></svg>') no-repeat right 12px center;
+    appearance:none; -webkit-appearance:none; cursor:pointer; color:var(--text); width:100%;
+  }
+  select:focus{ border-color: var(--teal); }
+  a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible, [tabindex]:focus-visible{
+    outline: 2px solid var(--teal); outline-offset: 2px;
+  }
+  .btn-primary:hover{ box-shadow: 0 4px 12px -4px rgba(46,91,84,.55); }
   body{
     background: radial-gradient(ellipse 1200px 700px at 50% -10%, #232B31 0%, var(--ink) 55%);
     color:var(--text);
@@ -72,14 +84,23 @@
   .status-msg.pending{ color: var(--text-dim); }
   .status-msg.ok{ color: var(--teal-dark); }
 
-  .tabs{ display:flex; align-items:stretch; border-bottom: 1px solid var(--paper-line); background:#F8F3E8; }
+  .tabs{
+    display:flex; align-items:stretch; border-bottom: 1px solid var(--paper-line); background:#F8F3E8;
+    overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; scrollbar-width:thin; scroll-snap-type:x proximity;
+  }
+  .tabs::-webkit-scrollbar{ height:5px; }
+  .tabs::-webkit-scrollbar-thumb{ background:var(--paper-line); border-radius:4px; }
   .tab-btn{
-    flex:1; padding: 16px 10px; text-align:center; font-family:'Fraunces', serif; font-size:16px; font-weight:600;
+    flex:0 0 auto; padding: 15px 16px; text-align:center; font-family:'Fraunces', serif; font-size:15px; font-weight:600;
     background:none; border:none; cursor:pointer; color: var(--text-dim); border-bottom: 3px solid transparent;
+    white-space:nowrap; scroll-snap-align:start;
   }
   .tab-btn.active{ color: var(--text); border-bottom-color: var(--teal); }
   .tab-btn:hover{ background: var(--paper-dim); }
-  .refresh-btn{ flex:0 0 auto; padding-left:18px; padding-right:18px; font-family:'IBM Plex Sans', sans-serif; font-size:13px; font-weight:500; }
+  .refresh-btn{
+    flex:0 0 auto; padding-left:18px; padding-right:18px; font-family:'IBM Plex Sans', sans-serif; font-size:13px; font-weight:500;
+    position:sticky; right:0; background:#F8F3E8; box-shadow:-10px 0 10px -6px rgba(20,24,28,.12);
+  }
   .icon-btn{ min-width:44px; min-height:44px; padding-left:10px; padding-right:10px; }
 
   .search-bar{ padding: 24px 28px 20px; border-bottom: 1px solid var(--paper-line); background:#FBF7ED; }
@@ -217,14 +238,12 @@
     .field-row{ flex-direction:column; }
     .ledger-footer-head{ flex-direction:column; align-items:flex-start; gap:4px; }
     .setup .url-row{ flex-direction:column; }
-    .tab-btn{ font-size:14px; padding:14px 6px; }
+    .tab-btn{ font-size:14px; padding:13px 13px; }
     .refresh-btn{ font-size:0; padding-left:14px; padding-right:14px; }
     .refresh-btn::before{ content:none; }
     .refresh-btn i{ font-size:18px; }
-    .install-btn{ position:fixed; right:16px; bottom:76px; z-index:20; width:48px; height:48px; padding:0; display:inline-flex !important; align-items:center; justify-content:center; box-shadow:0 5px 18px rgba(0,0,0,.3); font-size:0 !important; }
+    .install-btn{ position:fixed; right:16px; bottom:16px; z-index:20; width:48px; height:48px; padding:0; display:inline-flex !important; align-items:center; justify-content:center; box-shadow:0 5px 18px rgba(0,0,0,.3); font-size:0 !important; }
     .install-btn i{ font-size:20px; }
-    .tabs{ min-width:0; overflow:hidden; }
-    .tab-btn{ min-width:0; }
     .search-bar{ padding:20px 18px 16px; }
     .search-input-row input{ font-size:19px; }
     .company-row{ padding:18px; }
@@ -273,20 +292,20 @@
     <div id="mainPane">
       <div class="tabs">
         <button class="tab-btn active" id="tabAddBtn" onclick="switchTab('add')">Add a Referrer</button>
-        <button class="tab-btn" id="tabLookupBtn" onclick="switchTab('lookup')">Search &amp; lookup</button>
+        <button class="tab-btn" id="tabLookupBtn" onclick="switchTab('lookup')">Search &amp; lookup Referrer</button>
+        <button class="tab-btn" id="tabMentorBtn" onclick="switchTab('mentor')">Become a Mentor</button>
+        <button class="tab-btn" id="tabSeekerBtn" onclick="switchTab('seeker')">Find a Mentor</button>
         <button class="tab-btn" id="tabResumeBtn" onclick="switchTab('resume')">Resumes</button>
         <button class="tab-btn" id="tabFitBtn" onclick="switchTab('fit')">Resume fit</button>
         <button class="tab-btn" id="tabOpportunityBtn" onclick="switchTab('opportunity')">Opportunities</button>
         <button class="tab-btn" id="tabCareerBtn" onclick="switchTab('career')">Careers</button>
-        <button class="tab-btn" id="tabMentorBtn" onclick="switchTab('mentor')">Become a Mentor</button>
-        <button class="tab-btn" id="tabSeekerBtn" onclick="switchTab('seeker')">Find a Mentor</button>
         <button class="tab-btn refresh-btn" onclick="refreshContacts()" title="Refresh contacts" aria-label="Refresh contacts"><i class="fa-solid fa-rotate" aria-hidden="true"></i></button>
       </div>
 
       <div id="addView">
         <div class="declaration" style="margin:20px 26px 0;">
           <h3><i class="fa-solid fa-handshake" aria-hidden="true"></i> Refer someone in need</h3>
-          <p>This tab is for people <em>currently working at a company</em> who are willing to share a contact there — themselves or a colleague — so the community can reach out for referrals. If you're job-hunting yourself, use <em>Search &amp; lookup</em> to find contacts, or the <em>Resumes</em> tab to leave your resume for others to refer.</p>
+          <p>This tab is for people <em>currently working at a company</em> who are willing to share a contact there — themselves or a colleague — so the community can reach out for referrals. If you're job-hunting yourself, use <em>Search &amp; lookup Referrer</em> to find contacts, or the <em>Resumes</em> tab to leave your resume for others to refer.</p>
         </div>
         <div class="search-bar">
             <label for="searchInputAdd">Search for your company. If you don't find it, you can add it.</label>
@@ -343,7 +362,7 @@
             </div>
             <div class="field">
               <label for="r-status">Your situation</label>
-              <select id="r-status" style="width:100%;padding:9px 10px;border:1px solid var(--paper-line);border-radius:6px;font-size:14px;font-family:'IBM Plex Sans', sans-serif;background:#fff;">
+              <select id="r-status">
                 <option value="">Select one…</option>
                 <option value="Recent graduate">Recently graduated / passed out of college</option>
                 <option value="Recently lost job">Recently lost my job</option>
@@ -503,7 +522,7 @@
               <div class="field">
                 <label class="confirm-row" style="align-items:center;">
                   <input type="checkbox" id="m-paid" onchange="document.getElementById('m-rate-wrap').hidden = !this.checked;">
-                  <span>I'd like to offer paid mentorship</span>
+                  <span>I'd like to offer paid mentorship (optional)</span>
                 </label>
               </div>
               <div class="field" id="m-rate-wrap" hidden>
