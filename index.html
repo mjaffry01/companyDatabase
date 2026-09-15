@@ -278,6 +278,8 @@
         <button class="tab-btn" id="tabFitBtn" onclick="switchTab('fit')">Resume fit</button>
         <button class="tab-btn" id="tabOpportunityBtn" onclick="switchTab('opportunity')">Opportunities</button>
         <button class="tab-btn" id="tabCareerBtn" onclick="switchTab('career')">Careers</button>
+        <button class="tab-btn" id="tabMentorBtn" onclick="switchTab('mentor')">Become a Mentor</button>
+        <button class="tab-btn" id="tabSeekerBtn" onclick="switchTab('seeker')">Find a Mentor</button>
         <button class="tab-btn refresh-btn" onclick="refreshContacts()" title="Refresh contacts" aria-label="Refresh contacts"><i class="fa-solid fa-rotate" aria-hidden="true"></i></button>
       </div>
 
@@ -469,6 +471,114 @@
         </div>
         <div class="results" id="resultsCareer"></div>
       </section>
+
+      <section id="mentorView" style="display:none;" aria-labelledby="mentorTitle">
+        <div class="declaration" style="margin:20px 26px 0;">
+          <h3 id="mentorTitle"><i class="fa-solid fa-compass" aria-hidden="true"></i> Register as a career guide</h3>
+          <p>This tab is for people <em>currently working</em> who can spare a little time to guide someone starting out — a call a month, a resume look-over, a nudge in the right direction. Once you're registered, browse the youth below and <em>adopt</em> whoever you think you can actually help.</p>
+        </div>
+        <div class="mentor-split">
+          <div class="mentor-form-col">
+            <div class="add-form" id="mentorForm">
+              <div class="field"><label for="m-name">Your name</label><input type="text" id="m-name" placeholder="Full name" maxlength="150"></div>
+              <div class="field-row">
+                <div class="field"><label for="m-role">Current role</label><input type="text" id="m-role" placeholder="e.g. Sr. Analyst" maxlength="150"></div>
+                <div class="field"><label for="m-company">Company</label><input type="text" id="m-company" placeholder="e.g. Razorpay" maxlength="150"></div>
+              </div>
+              <div class="field-row">
+                <div class="field"><label for="m-phone">Phone number (optional)</label><input type="tel" id="m-phone" placeholder="+91 …" maxlength="30"></div>
+                <div class="field"><label for="m-contact-pref">Best way to reach you</label><select id="m-contact-pref"><option value="">No preference</option><option>Email</option><option>Call</option><option>WhatsApp</option></select></div>
+              </div>
+              <div class="field">
+                <label>Areas you can guide in</label>
+                <div class="chip-select" id="m-expertise">
+                  <span class="chip-opt">Product</span><span class="chip-opt">Data / Analytics</span><span class="chip-opt">Engineering</span><span class="chip-opt">Design</span><span class="chip-opt">Finance</span><span class="chip-opt">Marketing</span><span class="chip-opt">Sales</span><span class="chip-opt">HR / People</span><span class="chip-opt">Operations</span><span class="chip-opt">Legal</span><span class="chip-opt">Consulting</span><span class="chip-opt">Resume review</span><span class="chip-opt">Interview prep</span><span class="chip-opt">Career switch</span>
+                </div>
+              </div>
+              <div class="field-row">
+                <div class="field"><label for="m-years">Years of experience</label><input type="number" id="m-years" placeholder="e.g. 6" min="0" max="60"></div>
+                <div class="field"><label for="m-slots">Mentees you can take</label><input type="number" id="m-slots" placeholder="e.g. 2" min="1" max="20"></div>
+              </div>
+              <div class="field"><label for="m-note">A line for people browsing</label><textarea id="m-note" maxlength="600" placeholder="What kind of help are you good at giving?"></textarea></div>
+              <div class="field">
+                <label class="confirm-row" style="align-items:center;">
+                  <input type="checkbox" id="m-paid" onchange="document.getElementById('m-rate-wrap').hidden = !this.checked;">
+                  <span>I'd like to offer paid mentorship</span>
+                </label>
+              </div>
+              <div class="field" id="m-rate-wrap" hidden>
+                <label for="m-rate">Your rate</label>
+                <input type="text" id="m-rate" placeholder="e.g. ₹500 per session" maxlength="60">
+              </div>
+              <label class="confirm-row" id="m-undertaking-row">
+                <input type="checkbox" id="m-undertaking">
+                <span>I confirm the details above are accurate, and I agree to represent myself honestly as a mentor — including stating any fee clearly before a session starts, and not guaranteeing job outcomes. The Company Contact Book may remove my listing if this is misused.</span>
+              </label>
+              <div class="form-actions">
+                <span class="form-note" id="mentorFormNote">Not registered yet</span>
+                <button class="btn btn-primary" id="mentorSaveBtn" type="button" onclick="registerMentor()">Register</button>
+              </div>
+            </div>
+          </div>
+          <div class="mentor-list-col">
+            <div class="list-col-head"><h4>Youth seeking guidance</h4><span id="seekerPoolCount">0 waiting</span></div>
+            <div class="people" id="seekerPool"><div class="empty-note">Loading…</div></div>
+            <div class="ledger-footer" style="background:none;border-top:1px dashed var(--paper-line);padding:14px 0 0;">
+              <div class="ledger-footer-head"><h2 style="font-size:13px;">Mentees you've adopted</h2><span id="adoptedCount">0 adopted</span></div>
+              <div id="adoptedList"><div class="empty-note">Register above, then adopt someone from the list — they'll show up here.</div></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="seekerView" style="display:none;" aria-labelledby="seekerTitle">
+        <div class="declaration" style="margin:20px 26px 0;">
+          <h3 id="seekerTitle"><i class="fa-solid fa-hands-holding-child" aria-hidden="true"></i> Line yourself up for a mentor</h3>
+          <p>This tab is for job seekers who want a working professional in their corner — someone to sanity-check a resume, prep for an interview, or just tell you what a role is actually like. Add yourself below, then <em>request</em> a mentor whose experience matches what you need.</p>
+        </div>
+        <div class="mentor-split">
+          <div class="mentor-form-col">
+            <div class="add-form" id="seekerForm">
+              <div class="field"><label for="s-name">Your name</label><input type="text" id="s-name" placeholder="Full name" maxlength="150"></div>
+              <div class="field-row">
+                <div class="field"><label for="s-phone">Phone number (optional)</label><input type="tel" id="s-phone" placeholder="+91 …" maxlength="30"></div>
+                <div class="field"><label for="s-contact-pref">Best way to reach you</label><select id="s-contact-pref"><option value="">No preference</option><option>Email</option><option>Call</option><option>WhatsApp</option></select></div>
+              </div>
+              <div class="field">
+                <label for="s-status">Your situation</label>
+                <select id="s-status"><option value="">Select one…</option><option>Recent graduate</option><option>Recently lost my job</option><option>Switching fields</option></select>
+              </div>
+              <div class="field">
+                <label>Field you want guidance in</label>
+                <div class="chip-select" id="s-field">
+                  <span class="chip-opt">Product</span><span class="chip-opt">Data / Analytics</span><span class="chip-opt">Engineering</span><span class="chip-opt">Design</span><span class="chip-opt">Finance</span><span class="chip-opt">Marketing</span><span class="chip-opt">Sales</span><span class="chip-opt">HR / People</span><span class="chip-opt">Operations</span><span class="chip-opt">Legal</span><span class="chip-opt">Consulting</span><span class="chip-opt">Resume review</span><span class="chip-opt">Interview prep</span><span class="chip-opt">Career switch</span>
+                </div>
+              </div>
+              <div class="field"><label for="s-note">What kind of help do you need?</label><textarea id="s-note" maxlength="600" placeholder="Be specific — it helps a mentor decide if they're the right fit."></textarea></div>
+              <div class="form-actions">
+                <span class="form-note" id="seekerFormNote">Not registered yet</span>
+                <button class="btn btn-primary" id="seekerSaveBtn" type="button" onclick="registerSeeker()">Register</button>
+              </div>
+            </div>
+          </div>
+          <div class="mentor-list-col">
+            <div class="mentor-search">
+              <label for="mentor-search-input">Describe what you need help with — AI will suggest a mentor</label>
+              <div class="mentor-search-row">
+                <input type="text" id="mentor-search-input" maxlength="500" placeholder="e.g. I want to move from marketing into product management">
+                <button class="btn btn-primary btn-sm" type="button" onclick="searchMentorsWithAI()">Search</button>
+              </div>
+              <div id="mentorSearchResult"></div>
+            </div>
+            <div class="list-col-head"><h4>Mentors available</h4><span id="mentorPoolCount">0 open</span></div>
+            <div class="people" id="mentorPool"><div class="empty-note">Loading…</div></div>
+            <div class="ledger-footer" style="background:none;border-top:1px dashed var(--paper-line);padding:14px 0 0;">
+              <div class="ledger-footer-head"><h2 style="font-size:13px;">Your requests</h2><span id="requestedCount">0 sent</span></div>
+              <div id="requestedList"><div class="empty-note">Register above, then request a mentor from the list — they'll show up here.</div></div>
+            </div>
+          </div>
+        </div>
+      </section>
     </div>
   </div>
 </div>
@@ -586,6 +696,7 @@ window.clearContactSession = function(){
   document.getElementById('kickerLine').textContent = 'Members contact book';
   resetResumeForm();
   if(typeof resetResumeFitForm === 'function') resetResumeFitForm();
+  if(typeof resetMentorSession === 'function') resetMentorSession();
 };
 
 async function connect(bootstrap){
@@ -684,6 +795,11 @@ function switchTab(tab){
   if(tab === 'resume') loadMyResumes();
   document.getElementById('fitView').style.display = tab === 'fit' ? 'block' : 'none';
   if(tab === 'lookup') renderLookup();
+  document.getElementById('tabMentorBtn').classList.toggle('active', tab === 'mentor');
+  document.getElementById('mentorView').style.display = tab === 'mentor' ? 'block' : 'none';
+  document.getElementById('tabSeekerBtn').classList.toggle('active', tab === 'seeker');
+  document.getElementById('seekerView').style.display = tab === 'seeker' ? 'block' : 'none';
+  if(tab === 'mentor' || tab === 'seeker') loadMentorData();
 }
 
 function contactsFor(name){ return ledger[name] || []; }
@@ -1691,6 +1807,7 @@ document.getElementById('searchInputLookup').addEventListener('input', renderLoo
 if('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
 </script>
 <script src="opportunities.js"></script>
+<script src="mentor.js"></script>
 <script src="profile.js"></script>
 <script src="compare.js"></script>
 </body>

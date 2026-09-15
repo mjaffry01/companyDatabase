@@ -19,7 +19,8 @@ index.html (+ auth.js, auth-config.js)         apps-script/Code.gs
                                                        v
                                           Google Sheet "Jobfinder"
                                           (Company Directory / ReferrerContact /
-                                           Members / Resumes tabs)
+                                           Members / Resumes / Mentors /
+                                           MentorSeekers / MentorMatches tabs)
                                                        |
                                                        v
                                           Google Drive folder

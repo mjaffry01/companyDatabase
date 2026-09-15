@@ -54,3 +54,51 @@
 .fit-tailored ul{margin:0 0 8px;padding-left:20px}
 @media(max-width:800px){.fit-grid{grid-template-columns:1fr}}
 @media(max-width:600px){.tabs{flex-wrap:wrap}.tabs .tab-btn{flex:1 1 40%}.tabs .refresh-btn{flex:0 0 44px}.opportunity-heading,.opportunity-composer{padding:18px}#opportunityMessages{padding:12px 18px}.opportunity-message{max-width:95%}}
+
+/* ---- Mentor Match ---- */
+.mentor-split{display:grid;grid-template-columns:1fr;gap:0}
+@media(min-width:760px){.mentor-split{grid-template-columns:300px 1fr}}
+.mentor-form-col{padding:16px 26px 24px;border-bottom:1px solid var(--paper-line)}
+@media(min-width:760px){.mentor-form-col{border-bottom:none;border-right:1px dashed var(--paper-line)}}
+.mentor-list-col{padding:16px 22px 24px}
+.list-col-head{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:10px}
+.list-col-head h4{font-family:'Fraunces',serif;font-size:14.5px;font-weight:600;margin:0;color:var(--text)}
+.list-col-head span{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-dim)}
+.chip-select{display:flex;flex-wrap:wrap;gap:7px}
+.chip-opt{font-size:12px;padding:6px 12px;border-radius:20px;border:1px solid var(--paper-line);background:#fff;color:var(--text-dim);cursor:pointer;user-select:none}
+.chip-opt.on{background:var(--teal);border-color:var(--teal);color:#fff}
+.people{display:flex;flex-direction:column;gap:10px;max-height:430px;overflow-y:auto;padding-right:2px}
+.mentor-card{background:#fff;border:1px solid var(--paper-line);border-radius:10px;padding:13px 14px}
+.mentor-card.matched{background:#E4EEEC;border-color:#BFD9D4}
+.p-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}
+.p-name{font-weight:600;font-size:14px}
+.p-role{font-size:12px;color:var(--text-dim);margin-top:1px}
+.p-tags{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.p-tag{font-size:10.5px;font-weight:500;color:var(--brass);background:#F3E9D6;border-radius:20px;padding:2px 9px}
+.p-note{font-size:12px;color:var(--text-dim);margin-top:8px;line-height:1.5;overflow-wrap:anywhere}
+.p-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:11px}
+.p-capacity{font-family:'IBM Plex Mono',monospace;font-size:11px;color:var(--text-dim)}
+.p-status{font-size:11.5px;font-weight:600;color:var(--teal-dark)}
+.mini-chip{display:flex;flex-direction:column;gap:6px;background:var(--paper-dim);border-radius:8px;padding:8px 11px;font-size:12.5px;margin-bottom:6px}
+.mini-chip-main{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.mini-chip .who{font-weight:600}
+.mini-chip .meta{color:var(--text-dim);font-size:11px}
+.mini-chip .contact-actions{margin-top:0}
+.empty-note{font-size:12px;color:var(--text-dim);font-style:italic;padding:6px 2px}
+.p-pref{font-size:11px;color:var(--text-dim);margin-top:6px;font-style:italic}
+.p-badge{font-size:10.5px;font-weight:600;padding:2px 9px;border-radius:20px;margin-left:6px;vertical-align:middle}
+.p-badge.paid{background:#F3E9D6;color:var(--brass)}
+.p-badge.free{background:#E4EEEC;color:var(--teal-dark)}
+.p-rating{font-size:12px;color:var(--brass);margin-top:4px}
+.rate-widget{margin-top:10px;padding-top:10px;border-top:1px dashed var(--paper-line);display:flex;flex-direction:column;gap:6px}
+.rate-widget .star-picker{display:flex;gap:4px}
+.rate-widget .star{cursor:pointer;font-size:18px;color:var(--paper-line)}
+.rate-widget .star.on{color:var(--brass)}
+.rate-widget input[type="text"]{padding:6px 8px;border:1px solid var(--paper-line);border-radius:6px;font-size:12px;font-family:'IBM Plex Sans',sans-serif;background:#fff}
+.mentor-search{padding-bottom:14px;margin-bottom:14px;border-bottom:1px dashed var(--paper-line)}
+.mentor-search label{display:block;font-size:12px;color:var(--text-dim);margin-bottom:6px}
+.mentor-search-row{display:flex;gap:8px}
+.mentor-search-row input{flex:1;min-width:0;padding:8px 10px;border:1px solid var(--paper-line);border-radius:6px;font-size:13px;font-family:'IBM Plex Sans',sans-serif;background:#fff}
+#mentorSearchResult{margin-top:10px}
+#mentorSearchResult:empty{margin-top:0}
+@media(max-width:600px){.mentor-form-col,.mentor-list-col{padding:16px 18px}}
