@@ -137,6 +137,7 @@ function doPost(e){
     if(action === 'addMentorSlot') return json(addMentorSlot(email, body));
     if(action === 'removeMentorSlot') return json(removeMentorSlot(email, body));
     if(action === 'bookMentorSlot') return json(bookMentorSlot(email, body));
+    if(action === 'cancelMentorSlot') return json(cancelMentorSlot(email, body));
     if(action === 'compareResumeFit'){
       return json(typeof compareResumeToOpportunity === 'function'
         ? compareResumeToOpportunity(email, body)
@@ -1327,7 +1328,7 @@ function ensureMentorSlotsSheet_(){
   let sheet = ss().getSheetByName(MENTOR_SLOTS_SHEET);
   if(!sheet){
     sheet = ss().insertSheet(MENTOR_SLOTS_SHEET);
-    sheet.appendRow(['Slot ID', 'Mentor email', 'Starts at', 'Booked by email', 'Booked by name', 'Booked at']);
+    sheet.appendRow(['Slot ID', 'Mentor email', 'Starts at', 'Booked by email', 'Booked by name', 'Booked at', 'Reminder sent at']);
   }
   return sheet;
 }
@@ -1337,7 +1338,7 @@ function readMentorSlots_(){
   return sheet.getDataRange().getValues().slice(1).map(row => ({
     slotId: String(row[0] || ''), mentorEmail: String(row[1] || ''),
     startsAt: row[2] instanceof Date ? row[2].toISOString() : String(row[2] || ''),
-    bookedByEmail: String(row[3] || ''), bookedByName: String(row[4] || '')
+    bookedByEmail: String(row[3] || ''), bookedByName: String(row[4] || ''), reminderSentAt: row[6] || ''
   }));
 }
 // The mentor's own view of their times - includes who booked each one, since
@@ -1356,6 +1357,18 @@ function openSlotsFor_(mentorEmail, viewerEmail){
     .map(s => ({ slotId: s.slotId, startsAt: s.startsAt, bookedByMe: !!s.bookedByEmail }));
 }
 
+// Combines both directions - appointments where I'm the mentor, and
+// appointments where I'm the seeker - into one list sorted by time, so
+// either side has a single place to see everything coming up.
+function myAppointments_(email){
+  const booked = readMentorSlots_().filter(s => s.bookedByEmail);
+  const asMentor = booked.filter(s => normalizeKey(s.mentorEmail) === normalizeKey(email))
+    .map(s => ({ slotId: s.slotId, startsAt: s.startsAt, iAmMentor: true, withName: s.bookedByName || s.bookedByEmail }));
+  const asSeeker = booked.filter(s => normalizeKey(s.bookedByEmail) === normalizeKey(email))
+    .map(s => { const mentor = getMentorProfile(s.mentorEmail); return { slotId: s.slotId, startsAt: s.startsAt, iAmMentor: false, withName: mentor ? mentor.name : s.mentorEmail }; });
+  return asMentor.concat(asSeeker).sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt));
+}
+
 function getMentorData(email){
   const mentorProfile = getMentorProfile(email);
   if(mentorProfile) mentorProfile.myTimes = slotsForMentorOwner_(email);
@@ -1364,7 +1377,8 @@ function getMentorData(email){
     seekerProfile: getSeekerProfile(email),
     mentors: listMentors(email).map(m => Object.assign(m, { openTimes: openSlotsFor_(m.email, email) })),
     seekers: listSeekers(email),
-    matches: listMatches(email)
+    matches: listMatches(email),
+    myAppointments: myAppointments_(email)
   };
 }
 
@@ -1381,7 +1395,7 @@ function addMentorSlot(email, data){
     const existing = slotsForMentorOwner_(email).filter(s => !s.bookedByEmail);
     if(existing.length >= MAX_OPEN_SLOTS_PER_MENTOR) throw new Error('You already have ' + MAX_OPEN_SLOTS_PER_MENTOR + ' open times listed - remove one before adding another.');
     if(existing.some(s => Math.abs(new Date(s.startsAt).getTime() - startsAt.getTime()) < 60000)) throw new Error('You already have a time listed at that moment.');
-    ensureMentorSlotsSheet_().appendRow([Utilities.getUuid(), email, startsAt, '', '', '']);
+    ensureMentorSlotsSheet_().appendRow([Utilities.getUuid(), email, startsAt, '', '', '', '']);
   }finally{ lock.releaseLock(); }
   return { ok:true, myTimes: slotsForMentorOwner_(email) };
 }
@@ -1422,6 +1436,10 @@ function bookMentorSlot(email, data){
     if(!readMentorMatches_().some(m => normalizeKey(m.mentorEmail) === normalizeKey(mentorEmail) && normalizeKey(m.seekerEmail) === normalizeKey(email))){
       throw new Error('Connect with this mentor (adopt or request) before booking a time.');
     }
+    // One appointment per mentor at a time - cancel the existing one before booking another.
+    if(rows.some((row, i) => i > 0 && row[0] !== slotId && normalizeKey(row[1]) === normalizeKey(mentorEmail) && normalizeKey(row[3]) === normalizeKey(email))){
+      throw new Error('You already have an appointment with this mentor. Cancel it before booking another.');
+    }
     startsAt = rows[index][2];
     sheet.getRange(index + 1, 4, 1, 3).setValues([[email, seeker.name, new Date()]]);
   }finally{ lock.releaseLock(); }
@@ -1432,12 +1450,42 @@ function bookMentorSlot(email, data){
   return { ok:true, slotId: slotId, startsAt: startsAtIso, mentorEmail: mentorEmail };
 }
 
+// A seeker or the mentor themselves can cancel a booked appointment, freeing
+// the slot back to open so someone else (or the same seeker, later) can book
+// it again. Neither side can cancel an appointment they aren't part of.
+function cancelMentorSlot(email, data){
+  const slotId = clampText(data.slotId, 100);
+  let mentorEmail, seekerEmail, startsAt;
+  const lock = LockService.getScriptLock(); lock.waitLock(15000);
+  try{
+    const sheet = ss().getSheetByName(MENTOR_SLOTS_SHEET);
+    if(!sheet) throw new Error('That appointment no longer exists.');
+    const rows = sheet.getDataRange().getValues();
+    const index = rows.findIndex((row, i) => i > 0 && row[0] === slotId);
+    if(index < 0) throw new Error('That appointment no longer exists.');
+    mentorEmail = String(rows[index][1] || '');
+    seekerEmail = String(rows[index][3] || '');
+    if(!seekerEmail) throw new Error('That time is not booked.');
+    if(normalizeKey(email) !== normalizeKey(mentorEmail) && normalizeKey(email) !== normalizeKey(seekerEmail)){
+      throw new Error('You are not part of this appointment.');
+    }
+    startsAt = rows[index][2];
+    sheet.getRange(index + 1, 4, 1, 4).setValues([['', '', '', '']]);
+  }finally{ lock.releaseLock(); }
+
+  const mentor = getMentorProfile(mentorEmail);
+  const seeker = getSeekerProfile(seekerEmail);
+  sendAppointmentCancelledEmail_(mentor, seeker, startsAt, normalizeKey(email) === normalizeKey(mentorEmail) ? 'mentor' : 'seeker');
+  return { ok:true, slotId: slotId };
+}
+
 // Best-effort like the other notification emails in this file.
 function sendAppointmentConfirmationEmail_(mentor, seeker, startsAt){
   try{
     const when = Utilities.formatDate(new Date(startsAt), Session.getScriptTimeZone() || 'Etc/UTC', "EEEE, MMM d 'at' h:mm a (zzz)");
     MailApp.sendEmail(seeker.email, 'Appointment confirmed with ' + mentor.name,
       'Hi,\n\nYour mentorship session with ' + mentor.name + ' (' + mentor.role + ' at ' + mentor.company + ') is confirmed for:\n\n' + when + '\n\n'
+      + (mentor.paid ? 'This mentor charges: ' + mentor.rate + '\n\n' : '')
       + 'Reach them at ' + mentor.email + (mentor.phone ? ' or ' + mentor.phone : '') + (mentor.contactPref ? ' (they prefer ' + mentor.contactPref + ')' : '') + ' if you need to reschedule.'
       + '\n\nWishing you all the best.\n\nIf you did not request this, please ignore this email.',
       {name: MAIL_SENDER_NAME});
@@ -1447,6 +1495,65 @@ function sendAppointmentConfirmationEmail_(mentor, seeker, startsAt){
       + '\n\nWishing you all the best.\n\nIf you did not request this, please ignore this email.',
       {name: MAIL_SENDER_NAME});
   }catch(error){ console.error('Appointment confirmation email failed', error); }
+}
+
+function sendAppointmentCancelledEmail_(mentor, seeker, startsAt, cancelledBy){
+  try{
+    const when = Utilities.formatDate(new Date(startsAt), Session.getScriptTimeZone() || 'Etc/UTC', "EEEE, MMM d 'at' h:mm a (zzz)");
+    const who = cancelledBy === 'mentor' ? mentor.name : seeker.name;
+    const body = 'Hi,\n\nThe appointment for ' + when + ' has been cancelled by ' + who + '.\n\n'
+      + 'If you would like to find a new time, sign back in to the Company Contact Book and book (or list) another.'
+      + '\n\nWishing you all the best.';
+    MailApp.sendEmail(seeker.email, 'Appointment cancelled', body, {name: MAIL_SENDER_NAME});
+    MailApp.sendEmail(mentor.email, 'Appointment cancelled', body, {name: MAIL_SENDER_NAME});
+  }catch(error){ console.error('Appointment cancellation email failed', error); }
+}
+
+// Time-driven: call setupMentorReminderTrigger() once from the Apps Script
+// editor to run this every hour. Each run only touches appointments starting
+// 23-25 hours out that haven't had a reminder yet (Reminder sent at column),
+// so a booking never gets more than one reminder regardless of how often the
+// trigger fires.
+function sendUpcomingAppointmentReminders(){
+  const sheet = ss().getSheetByName(MENTOR_SLOTS_SHEET);
+  if(!sheet) return;
+  const rows = sheet.getDataRange().getValues();
+  const windowStart = Date.now() + 23 * 60 * 60 * 1000;
+  const windowEnd = Date.now() + 25 * 60 * 60 * 1000;
+  for(let i = 1; i < rows.length; i++){
+    const row = rows[i];
+    const seekerEmail = String(row[3] || '');
+    if(!seekerEmail || row[6]) continue;
+    const startsAtMs = new Date(row[2]).getTime();
+    if(startsAtMs < windowStart || startsAtMs > windowEnd) continue;
+    const mentor = getMentorProfile(String(row[1] || ''));
+    const seeker = getSeekerProfile(seekerEmail);
+    if(!mentor || !seeker) continue;
+    sendAppointmentReminderEmail_(mentor, seeker, row[2]);
+    sheet.getRange(i + 1, 7).setValue(new Date());
+  }
+}
+function sendAppointmentReminderEmail_(mentor, seeker, startsAt){
+  try{
+    const when = Utilities.formatDate(new Date(startsAt), Session.getScriptTimeZone() || 'Etc/UTC', "EEEE, MMM d 'at' h:mm a (zzz)");
+    MailApp.sendEmail(seeker.email, 'Reminder: your mentorship session is coming up',
+      'Hi,\n\nJust a reminder - your session with ' + mentor.name + ' is coming up:\n\n' + when + '\n\n'
+      + 'Reach them at ' + mentor.email + (mentor.phone ? ' or ' + mentor.phone : '') + ' if anything changes.'
+      + '\n\nWishing you all the best.', {name: MAIL_SENDER_NAME});
+    MailApp.sendEmail(mentor.email, 'Reminder: your mentorship session is coming up',
+      'Hi,\n\nJust a reminder - your session with ' + seeker.name + ' is coming up:\n\n' + when + '\n\n'
+      + 'Reach them at ' + seeker.email + (seeker.phone ? ' or ' + seeker.phone : '') + ' if anything changes.'
+      + '\n\nWishing you all the best.', {name: MAIL_SENDER_NAME});
+  }catch(error){ console.error('Appointment reminder email failed', error); }
+}
+// Run once from the Apps Script editor (select this function, click Run) to
+// activate hourly appointment reminders. Safe to run more than once - it
+// checks for an existing trigger first.
+function setupMentorReminderTrigger(){
+  const exists = ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'sendUpcomingAppointmentReminders');
+  if(exists) return 'Reminder trigger already exists.';
+  ScriptApp.newTrigger('sendUpcomingAppointmentReminders').timeBased().everyHours(1).create();
+  return 'Reminder trigger created. It runs every hour and emails both sides roughly 24 hours before a booked appointment.';
 }
 
 function upsertMentorProfile(email, data){

@@ -75,18 +75,48 @@ labels which kind of result it's showing.
 mentor's contact info — if that mentor has listed any available times, the
 seeker sees them as clickable buttons right on the mentor's card and booking
 one is instant (`bookMentorSlot`). Both sides then get an email
-(`sendAppointmentConfirmationEmail_`) confirming the exact date and time, not
-just an introduction. A mentor manages their own times from their profile
-form (`addMentorSlot` / `removeMentorSlot`) — up to 10 open times at once, each
-must be in the future and within 90 days, and a time that's already booked
-can't be removed (the mentor has to sort that out with the mentee directly
-first). Booking itself still requires an existing connection (adopted or
-requested) — the same rule as rating — so a seeker can't book a mentor's time
-without ever having reached out to them. A seeker only ever sees a mentor's
-*open* times plus whichever one they themselves booked — never another
-seeker's booking; the mentor's own view of their times (`mentorProfile.myTimes`)
-is the only place a booked time shows who booked it, the same visibility
-level as the adopted-mentees list already has.
+(`sendAppointmentConfirmationEmail_`) confirming the exact date and time (and,
+if the mentor is paid, restating their rate right there — not just in the
+earlier adopt/request email a seeker may have already skimmed past). A mentor
+manages their own times from their profile form (`addMentorSlot` /
+`removeMentorSlot`) — up to 10 open times at once, each must be in the future
+and within 90 days, and a time that's already booked can't be removed (the
+mentor has to sort that out with the mentee directly first — or either side
+can just cancel it, see below). Booking itself still requires an existing
+connection (adopted or requested) — the same rule as rating — so a seeker
+can't book a mentor's time without ever having reached out to them, and a
+seeker can only ever hold **one** open appointment per mentor at a time
+(`bookMentorSlot` blocks a second booking with the same mentor until the
+first is cancelled). A seeker only ever sees a mentor's *open* times plus
+whichever one they themselves booked — never another seeker's booking; the
+mentor's own view of their times (`mentorProfile.myTimes`) is the only place
+a booked time shows who booked it, the same visibility level as the
+adopted-mentees list already has.
+
+**Cancelling.** Either side of a booked appointment can cancel it
+(`cancelMentorSlot`) — the mentor from their "Available times" list, the
+seeker from the mentor's card on their own tab. Cancelling clears the
+booking columns (the slot itself isn't deleted, so the mentor doesn't have to
+re-add the time) and emails both sides that it was cancelled and by whom
+(`sendAppointmentCancelledEmail_`). Once freed, that same seeker (after
+sorting things out) or a different one can book it again.
+
+**Reminders.** A time-driven trigger you set up once
+(`setupMentorReminderTrigger` — run it from the Apps Script editor's function
+picker, or `Run` menu) checks hourly for booked appointments starting in
+23–25 hours and emails both sides a reminder (`sendUpcomingAppointmentReminders`
+/ `sendAppointmentReminderEmail_`). Each slot gets at most one reminder — the
+"Reminder sent at" column stops it firing twice even though the trigger runs
+every hour. No trigger, no reminders; the confirmation email at booking time
+still goes out regardless.
+
+**"Your upcoming appointments."** `getMentorData` also returns
+`myAppointments` — every booked slot involving you, whichever side you're on,
+merged into one time-sorted list (`myAppointments_`). The frontend shows this
+as a small panel at the top of both the Become a Mentor and Find a Mentor
+tabs, so a seeker who's booked with two different mentors (or a mentor with
+several mentees) sees all of it in one place instead of having to find each
+one on its own card.
 
 Four sheet tabs are created automatically on first use, the same
 create-on-first-write pattern as Profiles and Opportunities elsewhere in this
@@ -102,10 +132,11 @@ file — nothing needs to be pre-created in the spreadsheet:
   never deleted, and updated only by `rateMentor` filling in the last three
   columns, so the history of who reached out to whom stays intact.
 - **MentorSlots** — Slot ID, Mentor email, Starts at, Booked by email, Booked
-  by name, Booked at. One row per time a mentor has ever listed; a slot is
-  open when the last three columns are blank, and `bookMentorSlot` fills them
-  in rather than creating a new row, so a slot can only ever be booked once.
-
+  by name, Booked at, Reminder sent at. One row per time a mentor has ever
+  listed; open when the last four columns are blank. `bookMentorSlot` fills
+  in Booked by/at, `cancelMentorSlot` clears all four again (the slot stays,
+  ready to be booked again), and the reminder trigger fills in the last
+  column once per booking.
 ## Activate on the live site
 
 1. In the existing **standalone** Apps Script project, replace Code.gs with
@@ -115,15 +146,22 @@ file — nothing needs to be pre-created in the spreadsheet:
    the keyword fallback.
 2. Deploy > Manage deployments > edit the existing deployment > New version >
    Deploy. Keep the existing /exec URL and execute-as-owner setting.
-3. Publish index.html, mentor.js and opportunities.css with the normal GitHub
+3. In the Apps Script editor, select `setupMentorReminderTrigger` in the
+   function picker next to Run and click Run once — this turns on the hourly
+   reminder check. Safe to run more than once; it no-ops if the trigger
+   already exists.
+4. Publish index.html, mentor.js and opportunities.css with the normal GitHub
    Pages release.
-4. As an approved member, register on both tabs (a second browser profile or
+5. As an approved member, register on both tabs (a second browser profile or
    incognito window signed in as a different approved member helps here,
    since you cannot adopt or request yourself), adopt/request across the two
    accounts, confirm both the MentorMatches row and the notification email
    arrive, then rate the mentor from the seeker side and try the AI search box.
-   Add a time from the mentor side, book it from the seeker side, and confirm
-   both accounts get the appointment-confirmed email with the exact time.
+   Add a time from the mentor side, book it from the seeker side, confirm both
+   accounts get the appointment-confirmed email with the exact time, try
+   booking a second time with the same mentor (should be blocked), then
+   cancel it from either side and confirm both get the cancellation email and
+   the time becomes bookable again.
 
 Local changes do not update the live Apps Script project until the updated
 backend is deployed there. A save error leaves the form filled in for retry.

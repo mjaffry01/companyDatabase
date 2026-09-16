@@ -1,5 +1,5 @@
 let mentorSession = 0;
-let mentorState = { mentorProfile:null, seekerProfile:null, mentors:[], seekers:[], matches:[] };
+let mentorState = { mentorProfile:null, seekerProfile:null, mentors:[], seekers:[], matches:[], myAppointments:[] };
 let pendingRatings = {};
 
 function toggleChip(chip){ chip.classList.toggle('on'); }
@@ -51,7 +51,7 @@ function setSelectedChips(containerId, values){
 
 function resetMentorSession(){
   mentorSession++;
-  mentorState = { mentorProfile:null, seekerProfile:null, mentors:[], seekers:[], matches:[] };
+  mentorState = { mentorProfile:null, seekerProfile:null, mentors:[], seekers:[], matches:[], myAppointments:[] };
   pendingRatings = {};
   ['m-name','m-role','m-company','m-phone','m-years','m-slots','m-note','m-rate','s-name','s-phone','s-note'].forEach(id => { const el = document.getElementById(id); if(el){ el.value = ''; setFieldError(el, ''); } });
   ['m-contact-pref','s-status','s-contact-pref'].forEach(id => { const el = document.getElementById(id); if(el){ el.value = ''; setFieldError(el, ''); } });
@@ -72,6 +72,8 @@ function resetMentorSession(){
   document.getElementById('myTimesList').innerHTML = '';
   document.getElementById('mentor-search-input').value = '';
   document.getElementById('mentorSearchResult').replaceChildren();
+  document.getElementById('myAppointmentsMentor').innerHTML = '';
+  document.getElementById('myAppointmentsSeeker').innerHTML = '';
 }
 
 function applyMentorProfile(){
@@ -116,11 +118,11 @@ function renderMyTimes(){
   myTimes.forEach(slot => {
     const row = document.createElement('div');
     row.className = 'time-row';
-    row.innerHTML = `<span class="when">${escapeHtml(formatSlotTime(slot.startsAt))}</span>${
+    row.innerHTML = `<span class="when">${escapeHtml(formatSlotTime(slot.startsAt))}</span><span class="time-row-right">${
       slot.bookedByEmail
-        ? `<span class="booked-by">Booked by ${escapeHtml(slot.bookedByName || slot.bookedByEmail)}</span>`
+        ? `<span class="booked-by">Booked by ${escapeHtml(slot.bookedByName || slot.bookedByEmail)}</span><button class="remove" type="button" onclick="cancelAppointment(this, '${escapeHtml(slot.slotId)}')">Cancel</button>`
         : `<button class="remove" type="button" onclick="removeMentorTime('${escapeHtml(slot.slotId)}')">Remove</button>`
-    }`;
+    }</span>`;
     wrap.appendChild(row);
   });
 }
@@ -146,17 +148,21 @@ async function removeMentorTime(slotId){
   }catch(error){ showToast('Could not remove time: ' + error.message); }
 }
 
-async function bookMentorTime(button, slotId, mentorEmail){
+async function bookMentorTime(button, slotId){
   button.disabled = true;
   try{
-    const result = await contactApi('bookMentorSlot', { slotId });
-    const mentor = mentorState.mentors.find(m => m.email.toLowerCase() === mentorEmail.toLowerCase());
-    if(mentor){
-      mentor.openTimes = mentor.openTimes.map(s => s.slotId === slotId ? { slotId, startsAt: result.startsAt, bookedByMe: true } : s);
-    }
-    renderMentorPool();
+    await contactApi('bookMentorSlot', { slotId });
     showToast('Appointment confirmed — check your email');
+    await loadMentorData();
   }catch(error){ showToast('Could not book that time: ' + error.message); button.disabled = false; }
+}
+async function cancelAppointment(button, slotId){
+  button.disabled = true;
+  try{
+    await contactApi('cancelMentorSlot', { slotId });
+    showToast('Appointment cancelled');
+    await loadMentorData();
+  }catch(error){ showToast('Could not cancel: ' + error.message); button.disabled = false; }
 }
 function applySeekerProfile(){
   const note = document.getElementById('seekerFormNote');
@@ -190,15 +196,26 @@ async function loadMentorData(){
     mentorState.mentors = result.mentors || [];
     mentorState.seekers = result.seekers || [];
     mentorState.matches = result.matches || [];
+    mentorState.myAppointments = result.myAppointments || [];
     applyMentorProfile();
     applySeekerProfile();
     renderSeekerPool();
     renderMentorPool();
     renderAdoptedList();
     renderRequestedList();
+    renderMyAppointments();
   }catch(error){
     showToast('Could not load mentor network: ' + error.message);
   }
+}
+
+function renderMyAppointments(){
+  const list = mentorState.myAppointments || [];
+  const html = !list.length ? '' : `<div class="appt-panel">
+    <div class="appt-panel-head">Your upcoming appointments</div>
+    ${list.map(a => `<div class="mini-chip"><div class="mini-chip-main"><span><span class="who">${escapeHtml(a.withName)}</span> <span class="meta">— ${a.iAmMentor ? 'your mentee' : 'your mentor'}</span></span><span class="meta">${escapeHtml(formatSlotTime(a.startsAt))}</span></div></div>`).join('')}
+  </div>`;
+  ['myAppointmentsMentor', 'myAppointmentsSeeker'].forEach(id => { const el = document.getElementById(id); if(el) el.innerHTML = html; });
 }
 
 async function registerMentor(){
@@ -413,11 +430,11 @@ function renderMentorPool(){
 function timePicksHtml(mentor){
   const times = mentor.openTimes || [];
   const confirmed = times.find(s => s.bookedByMe);
-  if(confirmed) return `<div class="time-confirmed">&#10003; Appointment: ${escapeHtml(formatSlotTime(confirmed.startsAt))}</div>`;
+  if(confirmed) return `<div class="time-confirmed"><span>&#10003; Appointment: ${escapeHtml(formatSlotTime(confirmed.startsAt))}</span><button class="btn btn-ghost btn-sm" type="button" onclick="cancelAppointment(this, '${escapeHtml(confirmed.slotId)}')">Cancel</button></div>`;
   if(!times.length) return '';
   return `<div class="time-picks">
     <div class="label">Pick a time to book:</div>
-    <div class="time-pick-list">${times.map(s => `<button type="button" class="time-pick" onclick="bookMentorTime(this, '${escapeHtml(s.slotId)}', '${escapeHtml(mentor.email)}')">${escapeHtml(formatSlotTime(s.startsAt))}</button>`).join('')}</div>
+    <div class="time-pick-list">${times.map(s => `<button type="button" class="time-pick" onclick="bookMentorTime(this, '${escapeHtml(s.slotId)}')">${escapeHtml(formatSlotTime(s.startsAt))}</button>`).join('')}</div>
   </div>`;
 }
 
