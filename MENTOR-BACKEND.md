@@ -71,7 +71,24 @@ falls back to a plain keyword overlap against each mentor's role/company/
 expertise/note — the feature degrades instead of breaking, and the frontend
 labels which kind of result it's showing.
 
-Three sheet tabs are created automatically on first use, the same
+**Booking an actual appointment.** Once connected, a seeker doesn't just get a
+mentor's contact info — if that mentor has listed any available times, the
+seeker sees them as clickable buttons right on the mentor's card and booking
+one is instant (`bookMentorSlot`). Both sides then get an email
+(`sendAppointmentConfirmationEmail_`) confirming the exact date and time, not
+just an introduction. A mentor manages their own times from their profile
+form (`addMentorSlot` / `removeMentorSlot`) — up to 10 open times at once, each
+must be in the future and within 90 days, and a time that's already booked
+can't be removed (the mentor has to sort that out with the mentee directly
+first). Booking itself still requires an existing connection (adopted or
+requested) — the same rule as rating — so a seeker can't book a mentor's time
+without ever having reached out to them. A seeker only ever sees a mentor's
+*open* times plus whichever one they themselves booked — never another
+seeker's booking; the mentor's own view of their times (`mentorProfile.myTimes`)
+is the only place a booked time shows who booked it, the same visibility
+level as the adopted-mentees list already has.
+
+Four sheet tabs are created automatically on first use, the same
 create-on-first-write pattern as Profiles and Opportunities elsewhere in this
 file — nothing needs to be pre-created in the spreadsheet:
 
@@ -84,6 +101,10 @@ file — nothing needs to be pre-created in the spreadsheet:
   `requested`), Created at, Rating, Review, Rated at. One row per connection;
   never deleted, and updated only by `rateMentor` filling in the last three
   columns, so the history of who reached out to whom stays intact.
+- **MentorSlots** — Slot ID, Mentor email, Starts at, Booked by email, Booked
+  by name, Booked at. One row per time a mentor has ever listed; a slot is
+  open when the last three columns are blank, and `bookMentorSlot` fills them
+  in rather than creating a new row, so a slot can only ever be booked once.
 
 ## Activate on the live site
 
@@ -101,6 +122,8 @@ file — nothing needs to be pre-created in the spreadsheet:
    since you cannot adopt or request yourself), adopt/request across the two
    accounts, confirm both the MentorMatches row and the notification email
    arrive, then rate the mentor from the seeker side and try the AI search box.
+   Add a time from the mentor side, book it from the seeker side, and confirm
+   both accounts get the appointment-confirmed email with the exact time.
 
 Local changes do not update the live Apps Script project until the updated
 backend is deployed there. A save error leaves the form filled in for retry.

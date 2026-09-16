@@ -134,6 +134,9 @@ function doPost(e){
     if(action === 'requestMentor') return json(requestMentorship(email, body));
     if(action === 'rateMentor') return json(rateMentor(email, body));
     if(action === 'searchMentors') return json(searchMentors(email, body));
+    if(action === 'addMentorSlot') return json(addMentorSlot(email, body));
+    if(action === 'removeMentorSlot') return json(removeMentorSlot(email, body));
+    if(action === 'bookMentorSlot') return json(bookMentorSlot(email, body));
     if(action === 'compareResumeFit'){
       return json(typeof compareResumeToOpportunity === 'function'
         ? compareResumeToOpportunity(email, body)
@@ -1317,14 +1320,133 @@ function listMatches(email){
   return readMentorMatches_().filter(m => normalizeKey(m.mentorEmail) === normalizeKey(email) || normalizeKey(m.seekerEmail) === normalizeKey(email));
 }
 
+const MENTOR_SLOTS_SHEET = 'MentorSlots';
+const MAX_OPEN_SLOTS_PER_MENTOR = 10;
+
+function ensureMentorSlotsSheet_(){
+  let sheet = ss().getSheetByName(MENTOR_SLOTS_SHEET);
+  if(!sheet){
+    sheet = ss().insertSheet(MENTOR_SLOTS_SHEET);
+    sheet.appendRow(['Slot ID', 'Mentor email', 'Starts at', 'Booked by email', 'Booked by name', 'Booked at']);
+  }
+  return sheet;
+}
+function readMentorSlots_(){
+  const sheet = ss().getSheetByName(MENTOR_SLOTS_SHEET);
+  if(!sheet) return [];
+  return sheet.getDataRange().getValues().slice(1).map(row => ({
+    slotId: String(row[0] || ''), mentorEmail: String(row[1] || ''),
+    startsAt: row[2] instanceof Date ? row[2].toISOString() : String(row[2] || ''),
+    bookedByEmail: String(row[3] || ''), bookedByName: String(row[4] || '')
+  }));
+}
+// The mentor's own view of their times - includes who booked each one, since
+// that's their own mentee's info (same visibility level as the adopted list).
+function slotsForMentorOwner_(mentorEmail){
+  return readMentorSlots_().filter(s => normalizeKey(s.mentorEmail) === normalizeKey(mentorEmail))
+    .sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt))
+    .map(s => ({ slotId: s.slotId, startsAt: s.startsAt, bookedByEmail: s.bookedByEmail, bookedByName: s.bookedByName }));
+}
+// A seeker browsing this mentor only ever sees open slots, plus whichever
+// slot they themselves booked - never another seeker's booking.
+function openSlotsFor_(mentorEmail, viewerEmail){
+  return readMentorSlots_().filter(s => normalizeKey(s.mentorEmail) === normalizeKey(mentorEmail))
+    .filter(s => !s.bookedByEmail || normalizeKey(s.bookedByEmail) === normalizeKey(viewerEmail))
+    .sort((a, b) => new Date(a.startsAt) - new Date(b.startsAt))
+    .map(s => ({ slotId: s.slotId, startsAt: s.startsAt, bookedByMe: !!s.bookedByEmail }));
+}
+
 function getMentorData(email){
+  const mentorProfile = getMentorProfile(email);
+  if(mentorProfile) mentorProfile.myTimes = slotsForMentorOwner_(email);
   return {
-    mentorProfile: getMentorProfile(email),
+    mentorProfile: mentorProfile,
     seekerProfile: getSeekerProfile(email),
-    mentors: listMentors(email),
+    mentors: listMentors(email).map(m => Object.assign(m, { openTimes: openSlotsFor_(m.email, email) })),
     seekers: listSeekers(email),
     matches: listMatches(email)
   };
+}
+
+function addMentorSlot(email, data){
+  const mentor = getMentorProfile(email);
+  if(!mentor) throw new Error('Register as a mentor before adding available times.');
+  const startsAt = new Date(data.startsAt);
+  if(isNaN(startsAt.getTime())) throw new Error('Enter a valid date and time.');
+  if(startsAt.getTime() <= Date.now()) throw new Error('Pick a time in the future.');
+  if(startsAt.getTime() > Date.now() + 90 * 24 * 60 * 60 * 1000) throw new Error('Pick a time within the next 90 days.');
+
+  const lock = LockService.getScriptLock(); lock.waitLock(15000);
+  try{
+    const existing = slotsForMentorOwner_(email).filter(s => !s.bookedByEmail);
+    if(existing.length >= MAX_OPEN_SLOTS_PER_MENTOR) throw new Error('You already have ' + MAX_OPEN_SLOTS_PER_MENTOR + ' open times listed - remove one before adding another.');
+    if(existing.some(s => Math.abs(new Date(s.startsAt).getTime() - startsAt.getTime()) < 60000)) throw new Error('You already have a time listed at that moment.');
+    ensureMentorSlotsSheet_().appendRow([Utilities.getUuid(), email, startsAt, '', '', '']);
+  }finally{ lock.releaseLock(); }
+  return { ok:true, myTimes: slotsForMentorOwner_(email) };
+}
+
+function removeMentorSlot(email, data){
+  const slotId = clampText(data.slotId, 100);
+  const lock = LockService.getScriptLock(); lock.waitLock(15000);
+  try{
+    const sheet = ss().getSheetByName(MENTOR_SLOTS_SHEET);
+    if(!sheet) throw new Error('That time no longer exists.');
+    const rows = sheet.getDataRange().getValues();
+    const index = rows.findIndex((row, i) => i > 0 && row[0] === slotId && normalizeKey(row[1]) === normalizeKey(email));
+    if(index < 0) throw new Error('That time no longer exists.');
+    if(rows[index][3]) throw new Error('That time is already booked - reach out to the mentee before removing it.');
+    sheet.deleteRow(index + 1);
+  }finally{ lock.releaseLock(); }
+  return { ok:true, myTimes: slotsForMentorOwner_(email) };
+}
+
+// Booking requires an existing connection (adopted or requested, either
+// direction) - same rule as rateMentor - so a seeker can't book time with a
+// mentor they've never actually reached out to.
+function bookMentorSlot(email, data){
+  const seeker = getSeekerProfile(email);
+  if(!seeker) throw new Error('Register as a mentee before booking a time.');
+  const slotId = clampText(data.slotId, 100);
+
+  const lock = LockService.getScriptLock(); lock.waitLock(15000);
+  let mentorEmail, startsAt;
+  try{
+    const sheet = ss().getSheetByName(MENTOR_SLOTS_SHEET);
+    if(!sheet) throw new Error('That time is no longer available.');
+    const rows = sheet.getDataRange().getValues();
+    const index = rows.findIndex((row, i) => i > 0 && row[0] === slotId);
+    if(index < 0) throw new Error('That time is no longer available.');
+    if(rows[index][3]) throw new Error('Someone already booked that time.');
+    mentorEmail = String(rows[index][1] || '');
+    if(!readMentorMatches_().some(m => normalizeKey(m.mentorEmail) === normalizeKey(mentorEmail) && normalizeKey(m.seekerEmail) === normalizeKey(email))){
+      throw new Error('Connect with this mentor (adopt or request) before booking a time.');
+    }
+    startsAt = rows[index][2];
+    sheet.getRange(index + 1, 4, 1, 3).setValues([[email, seeker.name, new Date()]]);
+  }finally{ lock.releaseLock(); }
+
+  const mentor = getMentorProfile(mentorEmail);
+  const startsAtIso = startsAt instanceof Date ? startsAt.toISOString() : startsAt;
+  sendAppointmentConfirmationEmail_(mentor, seeker, startsAt);
+  return { ok:true, slotId: slotId, startsAt: startsAtIso, mentorEmail: mentorEmail };
+}
+
+// Best-effort like the other notification emails in this file.
+function sendAppointmentConfirmationEmail_(mentor, seeker, startsAt){
+  try{
+    const when = Utilities.formatDate(new Date(startsAt), Session.getScriptTimeZone() || 'Etc/UTC', "EEEE, MMM d 'at' h:mm a (zzz)");
+    MailApp.sendEmail(seeker.email, 'Appointment confirmed with ' + mentor.name,
+      'Hi,\n\nYour mentorship session with ' + mentor.name + ' (' + mentor.role + ' at ' + mentor.company + ') is confirmed for:\n\n' + when + '\n\n'
+      + 'Reach them at ' + mentor.email + (mentor.phone ? ' or ' + mentor.phone : '') + (mentor.contactPref ? ' (they prefer ' + mentor.contactPref + ')' : '') + ' if you need to reschedule.'
+      + '\n\nWishing you all the best.\n\nIf you did not request this, please ignore this email.',
+      {name: MAIL_SENDER_NAME});
+    MailApp.sendEmail(mentor.email, 'Appointment confirmed with ' + seeker.name,
+      'Hi,\n\nYour mentorship session with ' + seeker.name + ' is confirmed for:\n\n' + when + '\n\n'
+      + 'Reach them at ' + seeker.email + (seeker.phone ? ' or ' + seeker.phone : '') + (seeker.contactPref ? ' (they prefer ' + seeker.contactPref + ')' : '') + ' if you need to reschedule.'
+      + '\n\nWishing you all the best.\n\nIf you did not request this, please ignore this email.',
+      {name: MAIL_SENDER_NAME});
+  }catch(error){ console.error('Appointment confirmation email failed', error); }
 }
 
 function upsertMentorProfile(email, data){

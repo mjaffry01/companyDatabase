@@ -520,6 +520,14 @@
               </div>
               <div class="field"><label for="m-note">A line for people browsing</label><textarea id="m-note" maxlength="600" placeholder="What kind of help are you good at giving?"></textarea></div>
               <div class="field">
+                <label>Available times (optional) — mentees you're connected with can book one</label>
+                <div id="myTimesList"></div>
+                <div class="field-row" style="margin-top:6px;">
+                  <input type="datetime-local" id="m-new-time" style="flex:1;">
+                  <button class="btn btn-ghost btn-sm" type="button" onclick="addMentorTime()">Add time</button>
+                </div>
+              </div>
+              <div class="field">
                 <label class="confirm-row" style="align-items:center;">
                   <input type="checkbox" id="m-paid" onchange="document.getElementById('m-rate-wrap').hidden = !this.checked;">
                   <span>I'd like to offer paid mentorship (optional)</span>

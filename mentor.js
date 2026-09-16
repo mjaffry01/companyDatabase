@@ -68,6 +68,8 @@ function resetMentorSession(){
   document.getElementById('mentorPool').innerHTML = '<div class="empty-note">Sign in to see available mentors.</div>';
   document.getElementById('adoptedList').innerHTML = '<div class="empty-note">Register above, then adopt someone from the list — they\'ll show up here.</div>';
   document.getElementById('requestedList').innerHTML = '<div class="empty-note">Register above, then request a mentor from the list — they\'ll show up here.</div>';
+  document.getElementById('m-new-time').value = '';
+  document.getElementById('myTimesList').innerHTML = '';
   document.getElementById('mentor-search-input').value = '';
   document.getElementById('mentorSearchResult').replaceChildren();
 }
@@ -98,6 +100,63 @@ function applyMentorProfile(){
     note.classList.remove('ok');
     btn.textContent = 'Register';
   }
+  renderMyTimes();
+}
+
+function formatSlotTime(iso){
+  const d = new Date(iso);
+  return d.toLocaleString(undefined, { weekday:'short', month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
+}
+
+function renderMyTimes(){
+  const wrap = document.getElementById('myTimesList');
+  const myTimes = mentorState.mentorProfile?.myTimes || [];
+  if(!myTimes.length){ wrap.innerHTML = '<div class="empty-note">No times listed yet — add one below.</div>'; return; }
+  wrap.replaceChildren();
+  myTimes.forEach(slot => {
+    const row = document.createElement('div');
+    row.className = 'time-row';
+    row.innerHTML = `<span class="when">${escapeHtml(formatSlotTime(slot.startsAt))}</span>${
+      slot.bookedByEmail
+        ? `<span class="booked-by">Booked by ${escapeHtml(slot.bookedByName || slot.bookedByEmail)}</span>`
+        : `<button class="remove" type="button" onclick="removeMentorTime('${escapeHtml(slot.slotId)}')">Remove</button>`
+    }`;
+    wrap.appendChild(row);
+  });
+}
+
+async function addMentorTime(){
+  const input = document.getElementById('m-new-time');
+  const noteEl = document.getElementById('mentorFormNote');
+  if(!input.value){ noteEl.textContent = 'Pick a date and time first.'; noteEl.classList.remove('ok'); return; }
+  const startsAt = new Date(input.value).toISOString();
+  try{
+    const result = await contactApi('addMentorSlot', { startsAt });
+    if(mentorState.mentorProfile) mentorState.mentorProfile.myTimes = result.myTimes;
+    input.value = '';
+    renderMyTimes();
+    showToast('Time added');
+  }catch(error){ showToast('Could not add time: ' + error.message); }
+}
+async function removeMentorTime(slotId){
+  try{
+    const result = await contactApi('removeMentorSlot', { slotId });
+    if(mentorState.mentorProfile) mentorState.mentorProfile.myTimes = result.myTimes;
+    renderMyTimes();
+  }catch(error){ showToast('Could not remove time: ' + error.message); }
+}
+
+async function bookMentorTime(button, slotId, mentorEmail){
+  button.disabled = true;
+  try{
+    const result = await contactApi('bookMentorSlot', { slotId });
+    const mentor = mentorState.mentors.find(m => m.email.toLowerCase() === mentorEmail.toLowerCase());
+    if(mentor){
+      mentor.openTimes = mentor.openTimes.map(s => s.slotId === slotId ? { slotId, startsAt: result.startsAt, bookedByMe: true } : s);
+    }
+    renderMentorPool();
+    showToast('Appointment confirmed — check your email');
+  }catch(error){ showToast('Could not book that time: ' + error.message); button.disabled = false; }
 }
 function applySeekerProfile(){
   const note = document.getElementById('seekerFormNote');
@@ -186,7 +245,7 @@ async function registerMentor(){
   btn.disabled = true; noteEl.textContent = 'Saving…'; noteEl.classList.remove('ok');
   try{
     const result = await contactApi('registerMentor', {name, role, company, phone, contactPref, expertise, years, slots, note, paid, rate, undertakingAccepted});
-    mentorState.mentorProfile = result.profile;
+    mentorState.mentorProfile = Object.assign({}, result.profile, { myTimes: mentorState.mentorProfile?.myTimes || [] });
     applyMentorProfile();
     renderSeekerPool();
     showToast('Mentor profile saved');
@@ -344,10 +403,22 @@ function renderMentorPool(){
         match ? `<span class="p-status">${match.type === 'adopted' ? '&#10003; This mentor adopted you' : '&#10148; Requested — awaiting reply'}</span>`
         : `<button class="btn btn-primary btn-sm" ${mentorState.seekerProfile ? '' : 'disabled title="Register as a seeker first"'} onclick="requestMentor('${escapeHtml(m.email)}')">Request mentorship</button>`
       }</div>
+      ${match ? timePicksHtml(m) : ''}
       ${match ? ratingWidgetHtml(m.email, match.rating, match.review) : ''}`;
     wrap.appendChild(card);
   });
   document.getElementById('mentorPoolCount').textContent = mentors.length + ' open';
+}
+
+function timePicksHtml(mentor){
+  const times = mentor.openTimes || [];
+  const confirmed = times.find(s => s.bookedByMe);
+  if(confirmed) return `<div class="time-confirmed">&#10003; Appointment: ${escapeHtml(formatSlotTime(confirmed.startsAt))}</div>`;
+  if(!times.length) return '';
+  return `<div class="time-picks">
+    <div class="label">Pick a time to book:</div>
+    <div class="time-pick-list">${times.map(s => `<button type="button" class="time-pick" onclick="bookMentorTime(this, '${escapeHtml(s.slotId)}', '${escapeHtml(mentor.email)}')">${escapeHtml(formatSlotTime(s.startsAt))}</button>`).join('')}</div>
+  </div>`;
 }
 
 function renderAdoptedList(){
