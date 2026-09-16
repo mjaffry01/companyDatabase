@@ -523,11 +523,11 @@
               </div>
               <div class="field"><label for="m-note">A line for people browsing</label><textarea id="m-note" maxlength="600" placeholder="What kind of help are you good at giving?"></textarea></div>
               <div class="field">
-                <label>Available times (optional) — mentees you're connected with can book one</label>
+                <label><i class="fa-regular fa-calendar-plus" aria-hidden="true"></i> Available times (optional) — mentees you're connected with can book one</label>
                 <div id="myTimesList"></div>
-                <div class="field-row" style="margin-top:6px;">
+                <div class="field-row time-add-row" style="margin-top:6px;">
                   <input type="datetime-local" id="m-new-time" style="flex:1;">
-                  <button class="btn btn-ghost btn-sm" type="button" onclick="addMentorTime()">Add time</button>
+                  <button class="btn btn-ghost btn-sm" type="button" onclick="addMentorTime()"><i class="fa-solid fa-plus" aria-hidden="true"></i> Add time</button>
                 </div>
               </div>
               <div class="field">
@@ -594,10 +594,10 @@
           </div>
           <div class="mentor-list-col">
             <div class="mentor-search">
-              <label for="mentor-search-input">Describe what you need help with — AI will suggest a mentor</label>
+              <label for="mentor-search-input"><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i> Describe what you need help with — AI will suggest a mentor</label>
               <div class="mentor-search-row">
                 <input type="text" id="mentor-search-input" maxlength="500" placeholder="e.g. I want to move from marketing into product management">
-                <button class="btn btn-primary btn-sm" type="button" onclick="searchMentorsWithAI()">Search</button>
+                <button class="btn btn-primary btn-sm" type="button" onclick="searchMentorsWithAI()"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i> Search</button>
               </div>
               <div id="mentorSearchResult"></div>
             </div>

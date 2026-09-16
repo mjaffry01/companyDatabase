@@ -120,3 +120,17 @@
 #mentorSearchResult{margin-top:10px}
 #mentorSearchResult:empty{margin-top:0}
 @media(max-width:600px){.mentor-form-col,.mentor-list-col{padding:16px 18px}}
+@media(max-width:480px){
+  .time-row{flex-wrap:wrap}
+  .time-row-right{width:100%;justify-content:space-between}
+  .time-confirmed{flex-wrap:wrap}
+  .time-confirmed button{width:100%;justify-content:center}
+  .time-add-row{flex-wrap:wrap}
+  .time-add-row input{width:100%}
+  .time-add-row button{width:100%;justify-content:center}
+  .time-pick{width:100%;text-align:center}
+  .time-pick-list{flex-direction:column}
+  .mentor-search-row{flex-wrap:wrap}
+  .mentor-search-row button{width:100%;justify-content:center}
+}
+.btn{display:inline-flex;align-items:center;gap:6px;justify-content:center}

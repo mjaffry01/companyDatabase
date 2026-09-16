@@ -96,11 +96,11 @@ function applyMentorProfile(){
     setSelectedChips('m-expertise', profile.expertise);
     note.textContent = 'Registered — you can adopt mentees now';
     note.classList.add('ok');
-    btn.textContent = 'Update profile';
+    btn.innerHTML = '<i class="fa-solid fa-user-pen" aria-hidden="true"></i> Update profile';
   }else{
     note.textContent = 'Not registered yet';
     note.classList.remove('ok');
-    btn.textContent = 'Register';
+    btn.innerHTML = '<i class="fa-solid fa-compass" aria-hidden="true"></i> Register';
   }
   renderMyTimes();
 }
@@ -118,10 +118,10 @@ function renderMyTimes(){
   myTimes.forEach(slot => {
     const row = document.createElement('div');
     row.className = 'time-row';
-    row.innerHTML = `<span class="when">${escapeHtml(formatSlotTime(slot.startsAt))}</span><span class="time-row-right">${
+    row.innerHTML = `<span class="when"><i class="fa-regular fa-clock" aria-hidden="true"></i> ${escapeHtml(formatSlotTime(slot.startsAt))}</span><span class="time-row-right">${
       slot.bookedByEmail
-        ? `<span class="booked-by">Booked by ${escapeHtml(slot.bookedByName || slot.bookedByEmail)}</span><button class="remove" type="button" onclick="cancelAppointment(this, '${escapeHtml(slot.slotId)}')">Cancel</button>`
-        : `<button class="remove" type="button" onclick="removeMentorTime('${escapeHtml(slot.slotId)}')">Remove</button>`
+        ? `<span class="booked-by"><i class="fa-solid fa-user-check" aria-hidden="true"></i> Booked by ${escapeHtml(slot.bookedByName || slot.bookedByEmail)}</span><button class="remove" type="button" onclick="cancelAppointment(this, '${escapeHtml(slot.slotId)}')" title="Cancel this appointment" aria-label="Cancel this appointment"><i class="fa-solid fa-calendar-xmark" aria-hidden="true"></i></button>`
+        : `<button class="remove" type="button" onclick="removeMentorTime('${escapeHtml(slot.slotId)}')" title="Remove this time" aria-label="Remove this time"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>`
     }</span>`;
     wrap.appendChild(row);
   });
@@ -177,11 +177,11 @@ function applySeekerProfile(){
     setSelectedChips('s-field', profile.field);
     note.textContent = 'Registered — you can request mentors now';
     note.classList.add('ok');
-    btn.textContent = 'Update profile';
+    btn.innerHTML = '<i class="fa-solid fa-user-pen" aria-hidden="true"></i> Update profile';
   }else{
     note.textContent = 'Not registered yet';
     note.classList.remove('ok');
-    btn.textContent = 'Register';
+    btn.innerHTML = '<i class="fa-solid fa-hand" aria-hidden="true"></i> Register';
   }
 }
 
@@ -212,8 +212,8 @@ async function loadMentorData(){
 function renderMyAppointments(){
   const list = mentorState.myAppointments || [];
   const html = !list.length ? '' : `<div class="appt-panel">
-    <div class="appt-panel-head">Your upcoming appointments</div>
-    ${list.map(a => `<div class="mini-chip"><div class="mini-chip-main"><span><span class="who">${escapeHtml(a.withName)}</span> <span class="meta">— ${a.iAmMentor ? 'your mentee' : 'your mentor'}</span></span><span class="meta">${escapeHtml(formatSlotTime(a.startsAt))}</span></div></div>`).join('')}
+    <div class="appt-panel-head"><i class="fa-solid fa-calendar-check" aria-hidden="true"></i> Your upcoming appointments</div>
+    ${list.map(a => `<div class="mini-chip"><div class="mini-chip-main"><span>${a.iAmMentor ? '<i class="fa-solid fa-user-graduate" aria-hidden="true"></i>' : '<i class="fa-solid fa-compass" aria-hidden="true"></i>'} <span class="who">${escapeHtml(a.withName)}</span> <span class="meta">— ${a.iAmMentor ? 'your mentee' : 'your mentor'}</span></span><span class="meta"><i class="fa-regular fa-clock" aria-hidden="true"></i> ${escapeHtml(formatSlotTime(a.startsAt))}</span></div></div>`).join('')}
   </div>`;
   ['myAppointmentsMentor', 'myAppointmentsSeeker'].forEach(id => { const el = document.getElementById(id); if(el) el.innerHTML = html; });
 }
@@ -359,8 +359,11 @@ function mentorContactActions(person){
   html += '</div>';
   return html;
 }
+const CONTACT_PREF_ICONS = { Email: 'fa-solid fa-envelope', Call: 'fa-solid fa-phone', WhatsApp: 'fa-brands fa-whatsapp' };
 function contactPrefNote(person){
-  return person.contactPref ? `<div class="p-pref">Prefers ${escapeHtml(person.contactPref)}</div>` : '';
+  if(!person.contactPref) return '';
+  const icon = CONTACT_PREF_ICONS[person.contactPref] || 'fa-solid fa-comment';
+  return `<div class="p-pref"><i class="${icon}" aria-hidden="true"></i> Prefers ${escapeHtml(person.contactPref)}</div>`;
 }
 function ratingWidgetHtml(mentorEmail, existingRating, existingReview){
   const selected = pendingRatings[mentorEmail] || existingRating || 0;
@@ -369,7 +372,7 @@ function ratingWidgetHtml(mentorEmail, existingRating, existingReview){
   return `<div class="rate-widget">
     <div class="star-picker">${stars}</div>
     <input type="text" class="rate-review-input" maxlength="500" placeholder="Optional note about the mentorship" value="${escapeHtml(existingReview || '')}">
-    <button type="button" class="btn btn-ghost btn-sm" onclick="submitRating(this, '${escapeHtml(mentorEmail)}')">${existingRating ? 'Update rating' : 'Submit rating'}</button>
+    <button type="button" class="btn btn-ghost btn-sm" onclick="submitRating(this, '${escapeHtml(mentorEmail)}')"><i class="fa-regular fa-star" aria-hidden="true"></i> ${existingRating ? 'Update rating' : 'Submit rating'}</button>
   </div>`;
 }
 
@@ -389,8 +392,8 @@ function renderSeekerPool(){
       ${contactPrefNote(s)}
       ${match ? mentorContactActions(s) : ''}
       <div class="p-foot"><span></span>${
-        match ? `<span class="p-status">${match.type === 'adopted' ? '&#10003; Adopted' : '&#10148; Requested you'}</span>`
-        : `<button class="btn btn-primary btn-sm" ${mentorState.mentorProfile ? '' : 'disabled title="Register as a mentor first"'} onclick="adoptSeeker('${escapeHtml(s.email)}')">Adopt as mentee</button>`
+        match ? `<span class="p-status">${match.type === 'adopted' ? '<i class="fa-solid fa-circle-check" aria-hidden="true"></i> Adopted' : '<i class="fa-solid fa-paper-plane" aria-hidden="true"></i> Requested you'}</span>`
+        : `<button class="btn btn-primary btn-sm" ${mentorState.mentorProfile ? '' : 'disabled title="Register as a mentor first"'} onclick="adoptSeeker('${escapeHtml(s.email)}')"><i class="fa-solid fa-handshake" aria-hidden="true"></i> Adopt as mentee</button>`
       }</div>`;
     wrap.appendChild(card);
   });
@@ -406,10 +409,10 @@ function renderMentorPool(){
     const match = mentorState.matches.find(x => x.mentorEmail.toLowerCase() === m.email.toLowerCase());
     const card = document.createElement('div');
     card.className = 'mentor-card' + (match ? ' matched' : '');
-    const paidBadge = m.paid ? `<span class="p-badge paid">Paid · ${escapeHtml(m.rate)}</span>` : '<span class="p-badge free">Free</span>';
+    const paidBadge = m.paid ? `<span class="p-badge paid"><i class="fa-solid fa-indian-rupee-sign" aria-hidden="true"></i> ${escapeHtml(m.rate)}</span>` : '<span class="p-badge free"><i class="fa-solid fa-gift" aria-hidden="true"></i> Free</span>';
     const ratingLine = m.ratingCount
-      ? `<div class="p-rating">&#9733; ${m.ratingAvg} · ${m.ratingCount} review${m.ratingCount === 1 ? '' : 's'}</div>`
-      : '<div class="p-rating" style="color:var(--text-dim)">Not yet rated</div>';
+      ? `<div class="p-rating"><i class="fa-solid fa-star" aria-hidden="true"></i> ${m.ratingAvg} · ${m.ratingCount} review${m.ratingCount === 1 ? '' : 's'}</div>`
+      : '<div class="p-rating" style="color:var(--text-dim)"><i class="fa-regular fa-star" aria-hidden="true"></i> Not yet rated</div>';
     card.innerHTML = `
       <div class="p-head"><div><div class="p-name">${escapeHtml(m.name)} ${paidBadge}</div><div class="p-role">${escapeHtml(m.role)} · ${escapeHtml(m.company)}</div>${ratingLine}</div></div>
       <div class="p-tags">${m.expertise.map(t => `<span class="p-tag">${escapeHtml(t)}</span>`).join('')}</div>
@@ -417,8 +420,8 @@ function renderMentorPool(){
       ${contactPrefNote(m)}
       ${match ? mentorContactActions(m) : ''}
       <div class="p-foot"><span class="p-capacity">${m.years} yrs · ${m.slots} slot${m.slots === 1 ? '' : 's'}</span>${
-        match ? `<span class="p-status">${match.type === 'adopted' ? '&#10003; This mentor adopted you' : '&#10148; Requested — awaiting reply'}</span>`
-        : `<button class="btn btn-primary btn-sm" ${mentorState.seekerProfile ? '' : 'disabled title="Register as a seeker first"'} onclick="requestMentor('${escapeHtml(m.email)}')">Request mentorship</button>`
+        match ? `<span class="p-status">${match.type === 'adopted' ? '<i class="fa-solid fa-circle-check" aria-hidden="true"></i> This mentor adopted you' : '<i class="fa-solid fa-paper-plane" aria-hidden="true"></i> Requested — awaiting reply'}</span>`
+        : `<button class="btn btn-primary btn-sm" ${mentorState.seekerProfile ? '' : 'disabled title="Register as a seeker first"'} onclick="requestMentor('${escapeHtml(m.email)}')"><i class="fa-solid fa-paper-plane" aria-hidden="true"></i> Request mentorship</button>`
       }</div>
       ${match ? timePicksHtml(m) : ''}
       ${match ? ratingWidgetHtml(m.email, match.rating, match.review) : ''}`;
@@ -430,11 +433,11 @@ function renderMentorPool(){
 function timePicksHtml(mentor){
   const times = mentor.openTimes || [];
   const confirmed = times.find(s => s.bookedByMe);
-  if(confirmed) return `<div class="time-confirmed"><span>&#10003; Appointment: ${escapeHtml(formatSlotTime(confirmed.startsAt))}</span><button class="btn btn-ghost btn-sm" type="button" onclick="cancelAppointment(this, '${escapeHtml(confirmed.slotId)}')">Cancel</button></div>`;
+  if(confirmed) return `<div class="time-confirmed"><span><i class="fa-solid fa-circle-check" aria-hidden="true"></i> Appointment: ${escapeHtml(formatSlotTime(confirmed.startsAt))}</span><button class="btn btn-ghost btn-sm" type="button" onclick="cancelAppointment(this, '${escapeHtml(confirmed.slotId)}')"><i class="fa-solid fa-calendar-xmark" aria-hidden="true"></i> Cancel</button></div>`;
   if(!times.length) return '';
   return `<div class="time-picks">
-    <div class="label">Pick a time to book:</div>
-    <div class="time-pick-list">${times.map(s => `<button type="button" class="time-pick" onclick="bookMentorTime(this, '${escapeHtml(s.slotId)}')">${escapeHtml(formatSlotTime(s.startsAt))}</button>`).join('')}</div>
+    <div class="label"><i class="fa-regular fa-calendar" aria-hidden="true"></i> Pick a time to book:</div>
+    <div class="time-pick-list">${times.map(s => `<button type="button" class="time-pick" onclick="bookMentorTime(this, '${escapeHtml(s.slotId)}')"><i class="fa-regular fa-clock" aria-hidden="true"></i> ${escapeHtml(formatSlotTime(s.startsAt))}</button>`).join('')}</div>
   </div>`;
 }
 
@@ -447,7 +450,7 @@ function renderAdoptedList(){
     const seeker = mentorState.seekers.find(s => s.email.toLowerCase() === m.seekerEmail.toLowerCase());
     const row = document.createElement('div');
     row.className = 'mini-chip';
-    row.innerHTML = `<div class="mini-chip-main"><span><span class="who">${escapeHtml(seeker ? seeker.name : m.seekerEmail)}</span>${seeker ? ' <span class="meta">— ' + escapeHtml(seeker.status) + '</span>' : ''}</span><span class="meta" style="color:var(--teal-dark)">&#10003;</span></div>${seeker ? mentorContactActions(seeker) : ''}`;
+    row.innerHTML = `<div class="mini-chip-main"><span><span class="who">${escapeHtml(seeker ? seeker.name : m.seekerEmail)}</span>${seeker ? ' <span class="meta">— ' + escapeHtml(seeker.status) + '</span>' : ''}</span><span class="meta" style="color:var(--teal-dark)"><i class="fa-solid fa-circle-check" aria-hidden="true"></i></span></div>${seeker ? mentorContactActions(seeker) : ''}`;
     list.appendChild(row);
   });
   document.getElementById('adoptedCount').textContent = mine.length + ' adopted';
@@ -461,7 +464,7 @@ function renderRequestedList(){
     const mentor = mentorState.mentors.find(x => x.email.toLowerCase() === m.mentorEmail.toLowerCase());
     const row = document.createElement('div');
     row.className = 'mini-chip';
-    row.innerHTML = `<div class="mini-chip-main"><span><span class="who">${escapeHtml(mentor ? mentor.name : m.mentorEmail)}</span>${mentor ? ' <span class="meta">— ' + escapeHtml(mentor.role) + '</span>' : ''}</span><span class="meta" style="color:var(--brass)">pending</span></div>${mentor ? mentorContactActions(mentor) : ''}`;
+    row.innerHTML = `<div class="mini-chip-main"><span><span class="who">${escapeHtml(mentor ? mentor.name : m.mentorEmail)}</span>${mentor ? ' <span class="meta">— ' + escapeHtml(mentor.role) + '</span>' : ''}</span><span class="meta" style="color:var(--brass)"><i class="fa-regular fa-hourglass-half" aria-hidden="true"></i> pending</span></div>${mentor ? mentorContactActions(mentor) : ''}`;
     list.appendChild(row);
   });
   document.getElementById('requestedCount').textContent = mine.length + ' sent';
@@ -484,7 +487,9 @@ function renderMentorSearchResult(matches, method){
   resultEl.replaceChildren();
   const label = document.createElement('div');
   label.className = 'empty-note';
-  label.textContent = method === 'keyword' ? 'Keyword matches (ask an admin to enable AI ranking for better results):' : 'AI-suggested matches:';
+  label.innerHTML = method === 'keyword'
+    ? '<i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i> Keyword matches (ask an admin to enable AI ranking for better results):'
+    : '<i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i> AI-suggested matches:';
   resultEl.appendChild(label);
   matches.forEach(match => {
     const mentor = mentorState.mentors.find(m => m.email.toLowerCase() === match.email.toLowerCase());
