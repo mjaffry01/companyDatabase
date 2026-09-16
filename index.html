@@ -1484,18 +1484,18 @@ function renderCareerHrBlock(companyName){
             <div class="who">${escapeHtml(p.name)}${p.role ? ` <span class="company-tags">· ${escapeHtml(p.role)}</span>` : ''}</div>
             ${contactActions(p, companyName)}
             <div style="margin-top:6px;">
-              <button class="btn btn-ghost" type="button" style="padding:4px 10px;font-size:12px;" onclick="toggleCareerHrForm(${attrJson(companyName)}, ${attrJson(p.name)})">Update</button>
+              <button class="btn btn-ghost" type="button" style="padding:4px 10px;font-size:12px;" onclick="toggleCareerHrForm(${attrJson(companyName)}, ${attrJson(p.name)})"><i class="fa-solid fa-pen" aria-hidden="true"></i> Update</button>
             </div>
           </div>
         </div>
       `).join('')}
     </div>
-  ` : `<div class="no-people">No HR / referral contacts logged yet.</div>`;
+  ` : `<div class="no-people"><i class="fa-regular fa-address-card" aria-hidden="true"></i> No HR / referral contacts logged yet.</div>`;
 
   return `
     <div class="panel" style="border-top:none; margin-top:12px; padding-top:0;">
       <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between;margin-bottom:8px;">
-        <div style="font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--text-dim);">Community / HR contacts</div>
+        <div style="font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--text-dim);"><i class="fa-solid fa-address-book" aria-hidden="true"></i> Community / HR contacts</div>
         <button class="btn btn-ghost" type="button" style="padding:6px 12px;" onclick="toggleCareerHrForm(${attrJson(companyName)})">
           <i class="fa-solid fa-user-plus" aria-hidden="true"></i> Add / update HR
         </button>
@@ -1635,18 +1635,18 @@ function paintCareers(q, resultsEl, metaEl){
                 <i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Careers
               </a>
             ` : `
-              <span class="btn btn-ghost" style="cursor:default;opacity:.7;" title="No careers link yet">No link</span>
+              <span class="btn btn-ghost" style="cursor:default;opacity:.7;" title="No careers link yet"><i class="fa-solid fa-link-slash" aria-hidden="true"></i> No link</span>
             `}
             <button class="btn btn-ghost" type="button" onclick="toggleCareerLinkEdit(${attrJson(c.n)})" title="Edit careers URL">
               <i class="fa-solid fa-pen" aria-hidden="true"></i> Edit link
             </button>
             <a class="btn btn-ghost" href="${escapeHtml(hrSearchUrl(c.n))}" target="_blank" rel="noopener" title="Search LinkedIn for HR at ${escapeHtml(c.n)}" aria-label="Find HR on LinkedIn for ${escapeHtml(c.n)}">
-              <i class="fa-brands fa-linkedin" aria-hidden="true"></i> HR
+              <i class="fa-solid fa-people-group" aria-hidden="true"></i> HR
             </a>
             <a class="btn btn-ghost" href="${escapeHtml(ctoSearchUrl(c.n))}" target="_blank" rel="noopener" title="Search LinkedIn for CTO at ${escapeHtml(c.n)}" aria-label="Find CTO on LinkedIn for ${escapeHtml(c.n)}">
-              <i class="fa-brands fa-linkedin" aria-hidden="true"></i> CTO
+              <i class="fa-solid fa-laptop-code" aria-hidden="true"></i> CTO
             </a>
-            <span class="contact-count">${people.length} contact${people.length === 1 ? '' : 's'}</span>
+            <span class="contact-count"><i class="fa-solid fa-address-book" aria-hidden="true"></i> ${people.length} contact${people.length === 1 ? '' : 's'}</span>
           </div>
         </div>
         ${renderCareerLinkEditor(c.n, url)}
