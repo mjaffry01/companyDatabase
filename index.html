@@ -483,8 +483,16 @@
           <h3 id="careerTitle"><i class="fa-solid fa-briefcase" aria-hidden="true"></i> Company career pages</h3>
           <p>Career links come from <strong>careerOpportunities</strong>. Anyone can <strong>Edit link</strong> if a URL is wrong, and <strong>Add / update HR</strong> to share an HR name, phone, or email. LinkedIn <strong>HR</strong> / <strong>CTO</strong> searches stay available for discovery.</p>
         </div>
+        <div class="mentor-search" style="padding:16px 26px 0; margin-bottom:0; border-bottom:none;">
+          <label for="job-search-input"><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i> Search for a job across saved career pages (AI-assisted)</label>
+          <div class="mentor-search-row">
+            <input type="text" id="job-search-input" maxlength="300" placeholder="e.g. product manager fintech Hyderabad">
+            <button class="btn btn-primary btn-sm" type="button" onclick="searchJobsAcrossCareers()"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i> Search</button>
+          </div>
+          <div id="jobSearchResult"></div>
+        </div>
         <div class="search-bar">
-          <label for="searchInputCareer">Search companies</label>
+          <label for="searchInputCareer">Or browse all companies</label>
           <div class="search-input-row">
             <input type="text" id="searchInputCareer" placeholder="Company name or contact…" autocomplete="off" oninput="renderCareers()">
           </div>
@@ -1662,6 +1670,46 @@ function paintCareers(q, resultsEl, metaEl){
         ${withoutLink.map(card).join('')}
       </div>
     ` : ''}
+  `;
+}
+
+async function searchJobsAcrossCareers(){
+  const input = document.getElementById('job-search-input');
+  const query = input.value.trim();
+  const resultEl = document.getElementById('jobSearchResult');
+  if(!query){ resultEl.innerHTML = '<div class="empty-note">Describe the kind of job you want first.</div>'; return; }
+  resultEl.innerHTML = '<div class="empty-note">Checking saved career pages…</div>';
+  try{
+    const result = await contactApi('searchJobs', {query});
+    renderJobSearchResult(result.results || [], result.method);
+  }catch(error){ resultEl.innerHTML = '<div class="empty-note">Could not search: ' + escapeHtml(error.message) + '</div>'; }
+}
+function renderJobSearchResult(results, method){
+  const resultEl = document.getElementById('jobSearchResult');
+  if(!results.length){ resultEl.innerHTML = '<div class="empty-note">No saved career pages matched that yet — try browsing the list below instead.</div>'; return; }
+  const matched = results.filter(r => r.matched);
+  const rest = results.filter(r => !r.matched);
+  const row = r => `
+    <div class="company-row" style="padding:14px 0;">
+      <div class="company-head" style="cursor:default;">
+        <div class="company-info">
+          <h3 style="font-size:16px;">${escapeHtml(r.name)}</h3>
+          <div class="company-tags">${escapeHtml(r.sector)}</div>
+          ${r.matched
+            ? `<div class="company-address"><i class="fa-solid fa-circle-check" aria-hidden="true" style="color:var(--teal-dark)"></i> Mentions your search terms${r.snippet ? ': "…' + escapeHtml(r.snippet) + '…"' : ''}</div>`
+            : `<div class="company-address"><i class="fa-regular fa-circle-question" aria-hidden="true"></i> ${escapeHtml(r.fetchError || 'Could not confirm a match on the current page text.')}</div>`}
+        </div>
+        <div class="company-actions">
+          <a class="btn btn-primary" href="${escapeHtml(r.url)}" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Open careers page</a>
+        </div>
+      </div>
+    </div>`;
+  resultEl.innerHTML = `
+    <div class="empty-note">${method === 'keyword'
+      ? '<i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i> Keyword-matched companies (ask an admin to enable AI ranking for smarter results):'
+      : '<i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i> AI-matched companies, checked against their saved careers page:'}</div>
+    ${matched.map(row).join('')}
+    ${rest.length ? `<div class="empty-note" style="margin-top:10px;">Other likely-relevant companies — couldn't confirm a match on the page text (many career pages load jobs via JavaScript, so it's worth checking directly):</div>${rest.map(row).join('')}` : ''}
   `;
 }
 
