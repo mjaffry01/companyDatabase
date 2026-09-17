@@ -15,7 +15,10 @@ function backend(){
     MailApp:{sendEmail:(to,subject,body,options)=>mails.push({to,subject,body,options})}});
   vm.runInContext(fs.readFileSync('apps-script/Code.gs','utf8'),context);
   context.getContacts = () => ({Acme:[{name:'Alice',email:'one@example.com'}]});
-  return {context, files, rows, mails, failLog(){failLog=true;}};
+  const addedCompanies = [];
+  context.getCompanies = () => ([{n:'Acme'}]);
+  context.addCompany = (ownerEmail,data) => { addedCompanies.push({ownerEmail,data}); return {ok:true,company:{n:data.name}}; };
+  return {context, files, rows, mails, addedCompanies, failLog(){failLog=true;}};
 }
 const request = (extra={})=>({requestId:'12345678-1234-1234-1234-123456789012',company:'Acme',text:'A role\nApply here',files:[],...extra});
 test('text saved with metadata, history isolated and retries deduplicated',()=>{
@@ -27,11 +30,30 @@ test('text saved with metadata, history isolated and retries deduplicated',()=>{
   assert.equal(b.files.length,2); assert.equal(b.rows.length,2);
   assert.equal(b.files[0].blob.data,'A role\nApply here');
 });
-test('posting requires a matching contact email, not a supplied name',()=>{
+test('an approved member with no matching contact can still post, using their verified Google name',()=>{
   const b=backend();
-  assert.throws(()=>b.context.saveOpportunity('outsider@example.com',request({postedBy:'Alice'})),/signed-in email/);
-  assert.equal(b.files.length,0);
-  assert.equal(b.context.getOpportunityProfile('ONE@example.com').name,'Alice');
+  const result=b.context.saveOpportunity('outsider@example.com',request({postedBy:'Fake Name'}),'Outsider Real Name');
+  assert.equal(result.opportunity.postedBy,'Outsider Real Name'); // server-derived from the verified sign-in, not the request's supplied name
+  assert.deepEqual(Array.from(result.opportunity.homeCompanies),[]);
+  assert.equal(b.context.getOpportunityProfile('ONE@example.com').name,'Alice'); // matched contacts still resolve as before
+});
+test('posting for a company not yet in the Company Directory auto-adds it',()=>{
+  const b=backend();
+  b.context.saveOpportunity('one@example.com',request({company:'Brand New Co'}));
+  assert.equal(b.addedCompanies.length,1);
+  assert.equal(b.addedCompanies[0].ownerEmail,'one@example.com');
+  assert.equal(b.addedCompanies[0].data.name,'Brand New Co');
+});
+test('posting for a company already in the Company Directory does not re-add it',()=>{
+  const b=backend();
+  b.context.saveOpportunity('one@example.com',request({company:'Acme'}));
+  assert.equal(b.addedCompanies.length,0);
+});
+test('a failure while auto-adding the company never blocks the opportunity save',()=>{
+  const b=backend();
+  b.context.addCompany=()=>{throw Error('careers lookup failed');};
+  const result=b.context.saveOpportunity('one@example.com',request({company:'Brand New Co'}));
+  assert.equal(result.ok,true);
 });
 test('a listed member can post for another company with server-derived identity',()=>{
   const b=backend();

@@ -355,29 +355,31 @@ function ensureVisitLogSheet_(){
 // person. Best-effort like the notification emails elsewhere in this file: a
 // failure here is logged and swallowed, never blocking sign-in.
 function recordVisit_(email, name){
-  const lock = LockService.getScriptLock();
-  lock.waitLock(10000);
   try{
-    const sheet = ensureVisitLogSheet_();
-    const data = sheet.getDataRange().getValues();
-    const target = String(email).toLowerCase();
-    let row = -1;
-    for(let i = 1; i < data.length; i++){
-      if(String(data[i][0]).toLowerCase() === target){ row = i + 1; break; }
-    }
-    const now = new Date();
-    if(row === -1){
-      sheet.appendRow([email, name || '', 1, now, now]);
-    }else{
-      const count = Number(sheet.getRange(row, 3).getValue()) || 0;
-      sheet.getRange(row, 3).setValue(count + 1);
-      sheet.getRange(row, 5).setValue(now);
-      if(name) sheet.getRange(row, 2).setValue(name);
+    const lock = LockService.getScriptLock();
+    lock.waitLock(10000);
+    try{
+      const sheet = ensureVisitLogSheet_();
+      const data = sheet.getDataRange().getValues();
+      const target = String(email).toLowerCase();
+      let row = -1;
+      for(let i = 1; i < data.length; i++){
+        if(String(data[i][0]).toLowerCase() === target){ row = i + 1; break; }
+      }
+      const now = new Date();
+      if(row === -1){
+        sheet.appendRow([email, name || '', 1, now, now]);
+      }else{
+        const count = Number(sheet.getRange(row, 3).getValue()) || 0;
+        sheet.getRange(row, 3).setValue(count + 1);
+        sheet.getRange(row, 5).setValue(now);
+        if(name) sheet.getRange(row, 2).setValue(name);
+      }
+    }finally{
+      lock.releaseLock();
     }
   }catch(error){
     console.error('Visit log failed', error);
-  }finally{
-    lock.releaseLock();
   }
 }
 
@@ -741,7 +743,7 @@ function addCompany(ownerEmail, data){
     row[idx.s] = companyType;
     row[idx.t] = size;
     row[idx.a] = address;
-    if(idx.note >= 0) row[idx.note] = 'Added by member (' + ownerEmail + ') via Add a Referrer';
+    if(idx.note >= 0) row[idx.note] = 'Added by member (' + ownerEmail + ') via ' + (data.via || 'Add a Referrer');
     sheet.appendRow(row);
   }finally{
     lock.releaseLock();
@@ -1154,10 +1156,24 @@ function setupProfessionalOpportunity(){
   return folder;
 }
 
+// Best-effort, like the notification emails elsewhere in this file: a posting
+// should never fail just because the auto-add (or its career URL discovery)
+// hit a problem. Cheap on repeats - once the company exists, this is just one
+// read and no write.
+function ensureCompanyExists_(company, ownerEmail){
+  try{
+    const exists = getCompanies().some(c => normalizeKey(c.n) === normalizeKey(company));
+    if(!exists) addCompany(ownerEmail, { name: company, via: 'a posted Opportunity' });
+  }catch(error){
+    console.error('Could not auto-add company from Opportunity posting', error);
+  }
+}
+
 function saveOpportunity(email, data, googleName){
   const profile = getOpportunityProfile(email, null, googleName);
   const company = typeof data.company === 'string' ? data.company.trim() : '';
   if(!company || company.length > 200) throw new Error('Enter the opportunity company (up to 200 characters).');
+  ensureCompanyExists_(company, email);
   const requestId = String(data.requestId || '');
   if(!/^[a-zA-Z0-9-]{20,80}$/.test(requestId)) throw new Error('Invalid submission ID.');
   const text = typeof data.text === 'string' ? data.text.trim() : '';

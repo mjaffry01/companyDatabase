@@ -104,6 +104,16 @@ poster name and home companies (empty when there's no contact match) separately
 from the opportunity company. Existing records remain readable without
 inventing attribution that was not recorded.
 
+**Typing a new company auto-adds it.** `ensureCompanyExists_` checks the typed
+company (case/whitespace-insensitively) against the Company Directory before
+the opportunity itself is saved, and calls the same `addCompany` used by Add a
+Referrer when it isn't there yet - sector, size and address all save as "Not
+specified", and it still triggers the usual AI/Google-search careers-URL
+discovery so the new company shows up properly everywhere else in the app
+(Careers tab, company dropdowns), not just on this one posting. Like the
+notification emails elsewhere in this file, a failure here is logged and
+swallowed - the opportunity still saves even if the auto-add doesn't.
+
 The backend
 uses the verified sign-in email, never an email supplied in the request, to filter
 history. Original files, a text file for messages, and a JSON metadata file are
