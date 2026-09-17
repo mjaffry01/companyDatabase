@@ -126,6 +126,23 @@ Files retain the folder's existing permissions; the app does not enable public
 sharing. An Opportunities sheet stores submission IDs, verified emails, and JSON
 records. Repeating an unchanged submission ID returns its existing result.
 
+## Recovery from a failed AI analysis
+
+A provider outage or an exhausted quota (a 429 from Gemini, for example) leaves
+a posting saved with `analysis.status = 'Failed'` and a Review notes entry
+naming the actual reason - never a raw provider response, just one of this
+file's own short status strings. Run `retryOpportunityAnalysis` in the Apps
+Script editor to reprocess up to five still-Failed postings per run (rerun
+until caught up): it reads each posting's own live `analysis.status` off the
+Opportunities sheet directly (not the append-only Opportunity Analysis audit
+sheet, which never overwrites old rows), re-fetches any attachments' bytes
+from Drive by the file ID already saved on the record - the original upload's
+base64 is never persisted - and, on success, updates the Opportunities sheet's
+JSON in place so the poster's own Opportunities tab reflects the retried
+result. A posting whose attachment was deleted from Drive in the meantime just
+retries with that one file dropped, not a hard failure. Safe to rerun; a
+posting that already succeeded is left alone.
+
 ## Activate on the live site
 
 1. In the existing **standalone** Apps Script project, replace Code.gs with the

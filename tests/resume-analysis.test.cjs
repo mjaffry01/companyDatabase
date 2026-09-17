@@ -315,3 +315,57 @@ test('a failed opportunity analysis records the actual reason, not just generic 
   assert.match(result.reviewNotes[0],/quota exceeded/);
   assert.match(writes[0].reviewNotes[0],/quota exceeded/);
 });
+
+function retryBackend(oppRows){
+  const c=vm.createContext({console});
+  vm.runInContext(fs.readFileSync('apps-script/ResumeAnalysis.gs','utf8'),c);
+  vm.runInContext(fs.readFileSync('apps-script/Code.gs','utf8'),c);
+  const oppSheet={
+    getDataRange(){ return {getValues:()=>oppRows.map(r=>[...r])}; },
+    getRange(row,col){ return {setValue(v){ oppRows[row-1][col-1]=v; }}; }
+  };
+  c.SpreadsheetApp={openById:()=>({getSheetByName:name=>name==='Opportunities'?oppSheet:null})};
+  return c;
+}
+test('retryOpportunityAnalysis reruns only Failed postings, re-fetching attachment bytes from Drive by the saved file ID',()=>{
+  const oppRows=[
+    ['Submission ID','Submitted by','Record JSON'],
+    ['req-failed','poster@example.com',JSON.stringify({id:'req-failed',company:'Acme',text:'Need React',postedBy:'Pat',files:[{name:'jd.pdf',id:'file1'}],analysis:{status:'Failed'}})],
+    ['req-ok','poster2@example.com',JSON.stringify({id:'req-ok',company:'Acme',text:'Need Java',postedBy:'Sam',files:[],analysis:{status:'Complete'}})]
+  ];
+  const c=retryBackend(oppRows);
+  c.DriveApp={getFileById:id=>({getBlob:()=>({getBytes:()=>[1,2,3]})})};
+  c.Utilities={base64Encode:bytes=>Buffer.from(bytes).toString('base64')};
+  const calls=[];
+  c.analyzePostedOpportunity=(email,data)=>{calls.push({email,data});return {status:'Complete',reviewNotes:[]};};
+  c.retryOpportunityAnalysis();
+  assert.equal(calls.length,1); // the already-Complete posting is left alone
+  assert.equal(calls[0].email,'poster@example.com');
+  assert.equal(calls[0].data.requestId,'req-failed');
+  assert.equal(calls[0].data.files[0].dataBase64,Buffer.from([1,2,3]).toString('base64'));
+  assert.equal(JSON.parse(oppRows[1][2]).analysis.status,'Complete'); // record updated in place
+  assert.equal(JSON.parse(oppRows[2][2]).analysis.status,'Complete'); // untouched
+});
+test('retryOpportunityAnalysis skips an attachment whose Drive file is gone, without failing the whole retry',()=>{
+  const oppRows=[
+    ['Submission ID','Submitted by','Record JSON'],
+    ['req-failed','poster@example.com',JSON.stringify({id:'req-failed',company:'Acme',text:'Need React',postedBy:'Pat',files:[{name:'jd.pdf',id:'missing'}],analysis:{status:'Failed'}})]
+  ];
+  const c=retryBackend(oppRows);
+  c.DriveApp={getFileById:()=>{throw Error('File not found');}};
+  const calls=[];
+  c.analyzePostedOpportunity=(email,data)=>{calls.push(data);return {status:'Complete',reviewNotes:[]};};
+  c.retryOpportunityAnalysis();
+  assert.equal(calls.length,1);
+  assert.equal(calls[0].files.length,0); // the unreadable attachment is dropped, not fatal
+  assert.equal(JSON.parse(oppRows[1][2]).analysis.status,'Complete');
+});
+test('retryOpportunityAnalysis stops after five postings in one run',()=>{
+  const oppRows=[['Submission ID','Submitted by','Record JSON']];
+  for(let i=0;i<7;i++) oppRows.push(['req-'+i,'poster@example.com',JSON.stringify({id:'req-'+i,company:'Acme',text:'Need React',files:[],analysis:{status:'Failed'}})]);
+  const c=retryBackend(oppRows);
+  let calls=0;
+  c.analyzePostedOpportunity=()=>{calls++;return {status:'Complete',reviewNotes:[]};};
+  c.retryOpportunityAnalysis();
+  assert.equal(calls,5);
+});

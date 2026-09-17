@@ -889,7 +889,7 @@ function analyzePostedOpportunity(email, data){
       technicalSkills: [],
       nonTechnicalSkills: [],
       experienceBasis: '',
-      reviewNotes: ['Analysis failed: ' + reason + ' Check provider settings, quota, and file readability, then retry.'],
+      reviewNotes: ['Analysis failed: ' + reason + ' Check provider settings and quota, then run retryOpportunityAnalysis.'],
       status: 'Failed',
       method: analysisMethod(config)
     };
@@ -1127,5 +1127,39 @@ function retryResumeAnalysis(){
     analyzeResumeFile(id, row[2]);
     done.add(id);
     if(++count >= 5 || Date.now()-started > 4*60*1000) break;
+  }
+}
+
+// Owner-run recovery/backfill for opportunity AI analysis, mirroring
+// retryResumeAnalysis. Driven directly by each posting's own record.analysis
+// (not the Opportunity Analysis audit sheet, which never overwrites old rows),
+// so a posting is retried only until its live status stops being Failed. Each
+// attachment's bytes are re-fetched from Drive by the file ID already saved on
+// the record, since the original dataBase64 is never persisted. Updates the
+// Opportunities sheet's own JSON so the poster's Opportunities tab reflects the
+// retried result. Safe to rerun; processes at most five still-failed postings
+// per run to stay within Apps Script's execution time limit.
+function retryOpportunityAnalysis(){
+  const oppSheet = ss().getSheetByName(OPPORTUNITY_SHEET);
+  if(!oppSheet) return;
+  const oppRows = oppSheet.getDataRange().getValues();
+  let count = 0;
+  const started = Date.now();
+  for(let i = 1; i < oppRows.length; i++){
+    let record;
+    try{ record = JSON.parse(oppRows[i][2]); }catch(error){ continue; }
+    if(!record.analysis || record.analysis.status !== 'Failed') continue;
+    const email = oppRows[i][1];
+    const files = (record.files || []).map(file => {
+      try{
+        const blob = DriveApp.getFileById(file.id).getBlob();
+        return { name: file.name, dataBase64: Utilities.base64Encode(blob.getBytes()) };
+      }catch(error){ console.error('Could not re-fetch attachment for retry: ' + file.name, error); return null; }
+    }).filter(Boolean);
+    try{
+      record.analysis = analyzePostedOpportunity(email, { requestId: record.id, company: record.company, text: record.text || '', files: files, postedBy: record.postedBy });
+    }catch(error){ console.error('Opportunity retry failed for ' + record.id, error); continue; }
+    oppSheet.getRange(i + 1, 3).setValue(JSON.stringify(record));
+    if(++count >= 5 || Date.now() - started > 4*60*1000) break;
   }
 }

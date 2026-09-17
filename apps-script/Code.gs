@@ -1222,38 +1222,42 @@ function saveOpportunity(email, data, googleName){
   // AI decompose after the opportunity is safely stored (same pattern as resume analysis).
   if(typeof analyzePostedOpportunity === 'function'){
     try{
-      const analysis = analyzePostedOpportunity(email, {
+      record.analysis = analyzePostedOpportunity(email, {
         requestId: requestId,
         company: company,
         text: text,
         files: attachments.map(file => ({ name: file.name, dataBase64: file.dataBase64 })),
         postedBy: profile.name
       });
-      record.analysis = analysis;
-      const updateLock = LockService.getScriptLock();
-      updateLock.waitLock(15000);
-      try{
-        const values = sheet.getDataRange().getValues();
-        for(let i = 1; i < values.length; i++){
-          if(values[i][0] === requestId && String(values[i][1]).toLowerCase() === email.toLowerCase()){
-            sheet.getRange(i + 1, 3).setValue(JSON.stringify(record));
-            break;
-          }
-        }
-      }finally{
-        updateLock.releaseLock();
-      }
     }catch(error){
+      // analyzePostedOpportunity already catches its own provider/analysis errors and
+      // returns a Failed result instead of throwing - this only catches something
+      // unexpected in that function itself, but still needs to leave a persisted
+      // marker so retryOpportunityAnalysis can find and retry it like any other
+      // Failed posting.
       console.error('Opportunity saved; analysis requires retry.', error);
       record.analysis = {
         yearsExperience: null,
         technicalSkills: [],
         nonTechnicalSkills: [],
         experienceBasis: '',
-        reviewNotes: ['Opportunity saved; AI decomposition failed. Check LLM Script properties and try posting again.'],
+        reviewNotes: ['Opportunity saved; AI decomposition failed unexpectedly. Run retryOpportunityAnalysis.'],
         status: 'Failed',
         method: ''
       };
+    }
+    const updateLock = LockService.getScriptLock();
+    updateLock.waitLock(15000);
+    try{
+      const values = sheet.getDataRange().getValues();
+      for(let i = 1; i < values.length; i++){
+        if(values[i][0] === requestId && String(values[i][1]).toLowerCase() === email.toLowerCase()){
+          sheet.getRange(i + 1, 3).setValue(JSON.stringify(record));
+          break;
+        }
+      }
+    }finally{
+      updateLock.releaseLock();
     }
   }
 
