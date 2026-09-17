@@ -43,6 +43,17 @@ test('missing provider configuration queues safely and completed files are not r
   rows[1][9]='Review needed';
   assert.equal(c.analyzeResumeFile('abc','person@example.com'),'Review needed');assert.equal(rows.length,2);assert.equal(calls,0);
 });
+test('a failed resume analysis records the actual provider reason, not just generic guidance',()=>{
+  const c=setup(); const rows=[Array(12).fill('')];
+  c.analysisConfiguration=()=>({providers:[{provider:'gemini',model:'g'}]});
+  c.LockService={getScriptLock:()=>({waitLock(){},releaseLock(){}})};
+  c.resumeAnalysisSheet=()=>({getDataRange:()=>({getValues:()=>rows}),getLastRow:()=>rows.length,getRange:r=>({setValues:v=>rows[r-1]=v[0],setWrap:()=>({setVerticalAlignment(){}})})});
+  c.DriveApp={getFileById:()=>({})};
+  c.resumeModelInput=()=>({type:'input_text',text:'resume'});
+  c.callResumeLLM=()=>{throw Error('quota exceeded');};
+  assert.equal(c.analyzeResumeFile('abc','person@example.com'),'Failed');
+  assert.match(rows[1][6],/All configured analysis providers failed \(gemini: quota exceeded\)\./);
+});
 test('OpenAI request uses structured output and handles completion and refusal',()=>{
   const c=setup(); let sent; let output={status:'completed',output:[{type:'message',content:[{type:'output_text',text:JSON.stringify(sample())}]}]};
   c.resumeModelInput=()=>({type:'input_text',text:'Example resume'});
@@ -72,7 +83,7 @@ test('Gemini first, OpenAI fallback, validates results and prepares document onc
   assert.deepEqual(calls,['gemini','openai']);assert.equal(prepared,1);
   calls.length=0;c.callResumeLLM=(file,p)=>{calls.push(p.provider);return sample();};
   assert.equal(c.callResumeProviders({},config).method,'Gemini / g');assert.deepEqual(calls,['gemini']);
-  c.callResumeLLM=()=>{throw Error('unavailable');};assert.throws(()=>c.callResumeProviders({},config),/All configured/);
+  c.callResumeLLM=()=>{throw Error('unavailable');};assert.throws(()=>c.callResumeProviders({},config),/All configured analysis providers failed \(gemini: unavailable; openai: unavailable\)\./);
 });
 test('Gemini sends inline PDF and rejects blocked or malformed output',()=>{
   const c=setup();let sent;let body={candidates:[{finishReason:'STOP',content:{parts:[{text:JSON.stringify(sample())}]}}]};
@@ -290,4 +301,17 @@ test('analyzePostedOpportunity skips the referral email entirely when the compan
   assert.equal(mails.length,1); // candidate only, no referral email
   assert.equal(mails[0].to,'sam@example.com');
   assert.match(mails[0].body,/No referral contact is on file/); // candidate still told there's no contact yet
+});
+test('a failed opportunity analysis records the actual reason, not just generic guidance',()=>{
+  const c=setup();
+  c.clampText=(value,max)=>String(value||'').trim().slice(0,max||500);
+  c.PropertiesService={getScriptProperties:()=>({getProperty:key=>({RESUME_LLM_ENABLED:'true',RESUME_GEMINI_API_KEY:'k',RESUME_GEMINI_MODEL:'gemini-test'})[key]})};
+  c.callOpportunityAnalysisProviders=()=>{throw Error('All configured analysis providers failed (gemini: quota exceeded).');};
+  c.opportunitySourcesToText=()=>'Need React, 4 years';
+  const writes=[];
+  c.writeOpportunityAnalysisRow_=(email,requestId,company,payload,summary)=>writes.push(payload);
+  const result=c.analyzePostedOpportunity('poster@example.com',{requestId:'req-1',company:'Acme',text:'Need React, 4 years'});
+  assert.equal(result.status,'Failed');
+  assert.match(result.reviewNotes[0],/quota exceeded/);
+  assert.match(writes[0].reviewNotes[0],/quota exceeded/);
 });

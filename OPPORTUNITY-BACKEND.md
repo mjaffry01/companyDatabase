@@ -16,7 +16,11 @@ decomposes the opportunity into **Years of experience**, **Technical skills**,
 **Non-technical skills**, **Experience basis**, and **Review notes**. Results
 are stored on the opportunity JSON, shown in the Opportunities tab, and logged
 to an **Opportunity Analysis** sheet. If LLM properties are missing, the
-opportunity still saves and analysis status is `Awaiting LLM setup`.
+opportunity still saves and analysis status is `Awaiting LLM setup`. If every
+configured provider call fails instead, status is `Failed` and Review notes
+names the actual reason (e.g. which provider failed and why), not just generic
+"check your settings" advice - the underlying error text here is always one of
+this codebase's own short status strings, never a raw provider response body.
 
 ### Matching candidates to a posted opportunity
 

@@ -61,13 +61,18 @@ function analysisMethod(config){
 
 function callResumeProviders(file, config){
   const part = resumeModelInput(file);
+  const failures = [];
   for(const provider of config.providers){
     try{
       const result = validateResumeAnalysis(callResumeLLM(file, provider, part));
       return {result:result,method:analysisMethod(provider)};
-    }catch(error){ console.error('Resume analysis provider ' + provider.provider + ' failed: ' + (error && error.message)); }
+    }catch(error){
+      const message = (error && error.message) || String(error);
+      console.error('Resume analysis provider ' + provider.provider + ' failed: ' + message);
+      failures.push(provider.provider + ': ' + message);
+    }
   }
-  throw new Error('All configured analysis providers failed.');
+  throw new Error('All configured analysis providers failed (' + failures.join('; ') + ').');
 }
 
 function analyzeResumeFile(fileId, submittedEmail){
@@ -108,8 +113,12 @@ function analyzeResumeFile(fileId, submittedEmail){
     writeResumeAnalysisById(fileId, finalRow);
     return status;
   }catch(error){
-    // Do not log provider response bodies, tokens, or resume content.
-    writeResumeAnalysisById(fileId, ['','','','','','','Analysis failed. Check provider settings, quota, file readability, then run retryResumeAnalysis.',
+    // error.message here is always one of this file's own short status strings
+    // (e.g. "LLM request failed.") - never a provider response body or resume
+    // content, so it's safe to surface to the member without violating the
+    // "do not log provider response bodies, tokens, or resume content" rule.
+    const reason = (error && error.message) || String(error);
+    writeResumeAnalysisById(fileId, ['','','','','','','Analysis failed: ' + reason + ' Check provider settings, quota and file readability, then run retryResumeAnalysis.',
       'https://drive.google.com/file/d/' + fileId + '/view',fileId,'Failed',new Date().toISOString(),analysisMethod(config)]);
     return 'Failed';
   }
@@ -771,6 +780,7 @@ function callOpportunityAnalysisProviders(opportunityText, config){
   const part = {type:'input_text', text:'JOB OPPORTUNITY / JD:\n' + opportunityText};
   const prompt = opportunityAnalysisPrompt();
   const schema = opportunityAnalysisSchema();
+  const failures = [];
   for(const provider of config.providers){
     try{
       let result;
@@ -796,10 +806,12 @@ function callOpportunityAnalysisProviders(opportunityText, config){
       }
       return {result:validateOpportunityAnalysis(result), method:analysisMethod(provider)};
     }catch(error){
-      console.error('Opportunity analysis provider ' + provider.provider + ' failed: ' + (error && error.message));
+      const message = (error && error.message) || String(error);
+      console.error('Opportunity analysis provider ' + provider.provider + ' failed: ' + message);
+      failures.push(provider.provider + ': ' + message);
     }
   }
-  throw new Error('All configured analysis providers failed.');
+  throw new Error('All configured analysis providers failed (' + failures.join('; ') + ').');
 }
 
 /**
@@ -868,12 +880,16 @@ function analyzePostedOpportunity(email, data){
     return payload;
   }catch(error){
     console.error('Opportunity analysis failed', error);
+    // Like the resume-analysis failure path, error.message here is always one of
+    // this file's own short status strings, never a provider response body -
+    // safe to show the poster so "Failed" isn't a dead end.
+    const reason = (error && error.message) || String(error);
     const failed = {
       yearsExperience: null,
       technicalSkills: [],
       nonTechnicalSkills: [],
       experienceBasis: '',
-      reviewNotes: ['Analysis failed. Check provider settings, quota, and file readability, then retry.'],
+      reviewNotes: ['Analysis failed: ' + reason + ' Check provider settings, quota, and file readability, then retry.'],
       status: 'Failed',
       method: analysisMethod(config)
     };
