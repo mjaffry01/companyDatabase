@@ -123,11 +123,11 @@ function doPost(e){
     }
     if(action === 'myResumes') return json({ resumes: myResumes(email) });
     if(action === 'deleteResume') return json(deleteResume(email, body));
-    if(action === 'opportunityProfile') return json({ profile: getOpportunityProfile(email) });
+    if(action === 'opportunityProfile') return json({ profile: getOpportunityProfile(email, null, identity.name) });
     if(action === 'profile') return json({ profile: getUserProfile(email, identity.name) });
     if(action === 'saveWorkStatus') return json(saveWorkStatus(email, body.workStatus, identity.name));
-    if(action === 'opportunities') return json({ opportunities: getOpportunities(email), profile: getOpportunityProfile(email) });
-    if(action === 'saveOpportunity') return json(saveOpportunity(email, body));
+    if(action === 'opportunities') return json({ opportunities: getOpportunities(email), profile: getOpportunityProfile(email, null, identity.name) });
+    if(action === 'saveOpportunity') return json(saveOpportunity(email, body, identity.name));
     if(action === 'mentorData') return json(getMentorData(email));
     if(action === 'registerMentor') return json({ ok:true, profile: upsertMentorProfile(email, body) });
     if(action === 'registerSeeker') return json({ ok:true, profile: upsertSeekerProfile(email, body) });
@@ -1105,7 +1105,7 @@ function getOpportunityProfile(email, existingContacts, googleName){
   });
   const homeCompanies = [...new Set(matches.map(person => person.company))];
   return {name:matches.length ? matches[0].name : clampText(googleName, 150), email:email, phone:[...new Set(matches.map(person => person.phone).filter(Boolean))].join(', '), homeCompanies:homeCompanies,
-    companies:homeCompanies.slice(), canPost:matches.length > 0};
+    companies:homeCompanies.slice()};
 }
 
 function getUserProfile(email, googleName){
@@ -1154,9 +1154,8 @@ function setupProfessionalOpportunity(){
   return folder;
 }
 
-function saveOpportunity(email, data){
-  const profile = getOpportunityProfile(email);
-  if(!profile.canPost) throw new Error('Your signed-in email must be listed as a contact before you can post opportunities.');
+function saveOpportunity(email, data, googleName){
+  const profile = getOpportunityProfile(email, null, googleName);
   const company = typeof data.company === 'string' ? data.company.trim() : '';
   if(!company || company.length > 200) throw new Error('Enter the opportunity company (up to 200 characters).');
   const requestId = String(data.requestId || '');

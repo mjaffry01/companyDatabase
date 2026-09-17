@@ -93,15 +93,16 @@ Contact Book'}` as the `MailApp.sendEmail` sender-name option, so recipients
 see "Company Contact Book <the-deploying-account@gmail.com>" instead of just
 the raw deploying Gmail address with no label.
 
-Approved members can submit and reload their latest 100 submissions. The backend
-additionally requires the signed-in email to match the Email of a named contact
-in ReferrerContact before posting. Owner Email does not qualify: it may identify
-someone who entered a colleague's contact. The Opportunities header displays the
-matched name and company after sign-in. Any approved member with this contact
-match may select or enter another company when posting; separate per-company
-approval is not required. New records store the server-derived poster name and
-home companies separately from the opportunity company. Existing records remain
-readable without inventing attribution that was not recorded.
+Any approved member can submit and reload their latest 100 submissions - posting
+does not require the signed-in email to match a contact in ReferrerContact;
+being an approved, verified sign-in is trust enough. When the email does match
+a ReferrerContact row, the Opportunities header shows that matched name and
+company and preselects it in the company field; otherwise it falls back to the
+verified Google account name with no home company, and the member can still
+select or type any company when posting. New records store the server-derived
+poster name and home companies (empty when there's no contact match) separately
+from the opportunity company. Existing records remain readable without
+inventing attribution that was not recorded.
 
 The backend
 uses the verified sign-in email, never an email supplied in the request, to filter

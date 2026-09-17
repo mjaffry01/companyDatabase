@@ -4,16 +4,16 @@ let opportunityProfile = null;
 function applyOpportunityProfile(profile){
   opportunityProfile = profile || null;
   const identity = document.getElementById('opportunityIdentity');
-  identity.textContent = profile?.canPost
-    ? profile.name + ' · ' + profile.homeCompanies.join(', ')
-    : 'To post, add your own name and company in Add a contact using the email you signed in with, then refresh history.';
+  identity.textContent = profile
+    ? profile.name + (profile.homeCompanies.length ? ' · ' + profile.homeCompanies.join(', ') : '')
+    : '';
   const select = document.getElementById('opportunityCompany');
   const options = document.getElementById('opportunityCompanyOptions');
   options.replaceChildren();
   const companyNames = [...new Set([...(profile?.companies || []), ...companies.map(company => company.n)])];
   companyNames.forEach(company => { const option = document.createElement('option'); option.value = company; options.append(option); });
   if(!select.value) select.value = profile?.homeCompanies?.[0] || '';
-  document.getElementById('opportunityFields').disabled = opportunitySaving || !profile?.canPost;
+  document.getElementById('opportunityFields').disabled = opportunitySaving;
 }
 async function loadOpportunityProfile(){
   const session = opportunitySession;
@@ -154,7 +154,6 @@ async function loadOpportunities(){
 }
 document.getElementById('opportunityComposer').addEventListener('submit', async event => {
   event.preventDefault(); if(opportunitySaving) return;
-  if(!opportunityProfile?.canPost){ opportunityStatus.textContent = 'A matching contact profile is required to post.'; return; }
   const company = document.getElementById('opportunityCompany').value;
   const text = opportunityText.value.trim();
   if(!text && !opportunityFiles.length){ opportunityStatus.textContent = 'Paste an opportunity or attach a file first.'; return; }
@@ -180,6 +179,6 @@ document.getElementById('opportunityComposer').addEventListener('submit', async 
       : 'Saved to Professional Opportunity. You can send another opportunity.';
     await loadOpportunities();
   }catch(error){ if(session === opportunitySession) opportunityStatus.textContent = 'Could not save: ' + error.message + ' Your message and attachments are still here. Retry Send opportunity.'; }
-  finally{ if(session === opportunitySession){ opportunitySaving = false; document.getElementById('opportunityFields').disabled = !opportunityProfile?.canPost; } }
+  finally{ if(session === opportunitySession){ opportunitySaving = false; document.getElementById('opportunityFields').disabled = false; } }
 });
 document.getElementById('opportunityCompany').addEventListener('input', () => { opportunityRequestId = null; });
