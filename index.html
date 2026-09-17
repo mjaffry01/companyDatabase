@@ -1673,20 +1673,36 @@ function paintCareers(q, resultsEl, metaEl){
   `;
 }
 
+function wideWebSearchHtml(query){
+  const q = encodeURIComponent(query);
+  const google = 'https://www.google.com/search?q=' + q + '+jobs+(site:linkedin.com/jobs+OR+site:naukri.com+OR+site:indeed.com)';
+  const linkedin = 'https://www.linkedin.com/jobs/search/?keywords=' + q;
+  const naukri = 'https://www.naukri.com/' + encodeURIComponent(query.trim().toLowerCase().replace(/\s+/g, '-')) + '-jobs';
+  return `<div class="wide-web-search">
+    <div class="label"><i class="fa-solid fa-globe" aria-hidden="true"></i> Not finding it here? Search the wider web:</div>
+    <div class="wide-web-links">
+      <a class="btn btn-ghost btn-sm" href="${google}" target="_blank" rel="noopener"><i class="fa-brands fa-google" aria-hidden="true"></i> Google</a>
+      <a class="btn btn-ghost btn-sm" href="${linkedin}" target="_blank" rel="noopener"><i class="fa-brands fa-linkedin" aria-hidden="true"></i> LinkedIn</a>
+      <a class="btn btn-ghost btn-sm" href="${naukri}" target="_blank" rel="noopener"><i class="fa-solid fa-briefcase" aria-hidden="true"></i> Naukri</a>
+    </div>
+  </div>`;
+}
+
 async function searchJobsAcrossCareers(){
   const input = document.getElementById('job-search-input');
   const query = input.value.trim();
   const resultEl = document.getElementById('jobSearchResult');
   if(!query){ resultEl.innerHTML = '<div class="empty-note">Describe the kind of job you want first.</div>'; return; }
-  resultEl.innerHTML = '<div class="empty-note">Checking saved career pages…</div>';
+  resultEl.innerHTML = '<div class="empty-note">Checking saved career pages…</div>' + wideWebSearchHtml(query);
   try{
     const result = await contactApi('searchJobs', {query});
-    renderJobSearchResult(result.results || [], result.method);
-  }catch(error){ resultEl.innerHTML = '<div class="empty-note">Could not search: ' + escapeHtml(error.message) + '</div>'; }
+    renderJobSearchResult(result.results || [], result.method, query);
+  }catch(error){ resultEl.innerHTML = '<div class="empty-note">Could not search: ' + escapeHtml(error.message) + '</div>' + wideWebSearchHtml(query); }
 }
-function renderJobSearchResult(results, method){
+function renderJobSearchResult(results, method, query){
   const resultEl = document.getElementById('jobSearchResult');
-  if(!results.length){ resultEl.innerHTML = '<div class="empty-note">No saved career pages matched that yet — try browsing the list below instead.</div>'; return; }
+  const wideWeb = wideWebSearchHtml(query);
+  if(!results.length){ resultEl.innerHTML = '<div class="empty-note">No saved career pages matched that yet — try browsing the list below, or the wider web.</div>' + wideWeb; return; }
   const matched = results.filter(r => r.matched);
   const rest = results.filter(r => !r.matched);
   const row = r => `
@@ -1694,10 +1710,11 @@ function renderJobSearchResult(results, method){
       <div class="company-head" style="cursor:default;">
         <div class="company-info">
           <h3 style="font-size:16px;">${escapeHtml(r.name)}</h3>
-          <div class="company-tags">${escapeHtml(r.sector)}</div>
+          <div class="company-tags">${escapeHtml(r.sector)}${r.jobs && r.jobs.length ? ` · <i class="fa-solid fa-plug-circle-check" aria-hidden="true"></i> live via ${escapeHtml(r.source)}` : ''}</div>
           ${r.matched
-            ? `<div class="company-address"><i class="fa-solid fa-circle-check" aria-hidden="true" style="color:var(--teal-dark)"></i> Mentions your search terms${r.snippet ? ': "…' + escapeHtml(r.snippet) + '…"' : ''}</div>`
+            ? `<div class="company-address"><i class="fa-solid fa-circle-check" aria-hidden="true" style="color:var(--teal-dark)"></i> ${r.jobs && r.jobs.length ? escapeHtml(r.snippet) : 'Mentions your search terms' + (r.snippet ? ': "…' + escapeHtml(r.snippet) + '…"' : '')}</div>`
             : `<div class="company-address"><i class="fa-regular fa-circle-question" aria-hidden="true"></i> ${escapeHtml(r.fetchError || 'Could not confirm a match on the current page text.')}</div>`}
+          ${r.jobs && r.jobs.length ? `<ul class="job-links">${r.jobs.map(j => `<li><a href="${escapeHtml(j.url)}" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> ${escapeHtml(j.title)}</a>${j.location ? ` <span class="meta">— ${escapeHtml(j.location)}</span>` : ''}</li>`).join('')}</ul>` : ''}
         </div>
         <div class="company-actions">
           <a class="btn btn-primary" href="${escapeHtml(r.url)}" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> Open careers page</a>
@@ -1710,6 +1727,7 @@ function renderJobSearchResult(results, method){
       : '<i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i> AI-matched companies, checked against their saved careers page:'}</div>
     ${matched.map(row).join('')}
     ${rest.length ? `<div class="empty-note" style="margin-top:10px;">Other likely-relevant companies — couldn't confirm a match on the page text (many career pages load jobs via JavaScript, so it's worth checking directly):</div>${rest.map(row).join('')}` : ''}
+    ${wideWeb}
   `;
 }
 

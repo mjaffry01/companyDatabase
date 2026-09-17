@@ -119,6 +119,16 @@
 .mentor-search-row input{flex:1;min-width:0;padding:8px 10px;border:1px solid var(--paper-line);border-radius:6px;font-size:13px;font-family:'IBM Plex Sans',sans-serif;background:#fff}
 #mentorSearchResult{margin-top:10px}
 #mentorSearchResult:empty{margin-top:0}
+#jobSearchResult{margin-top:10px}
+#jobSearchResult:empty{margin-top:0}
+.wide-web-search{margin-top:14px;padding-top:14px;border-top:1px dashed var(--paper-line)}
+.wide-web-search .label{font-size:12px;color:var(--text-dim);margin-bottom:8px}
+.wide-web-links{display:flex;flex-wrap:wrap;gap:8px}
+.job-links{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:4px}
+.job-links li{font-size:12.5px}
+.job-links a{color:var(--teal-dark);text-decoration:none;font-weight:500}
+.job-links a:hover{text-decoration:underline}
+.job-links .meta{color:var(--text-dim);font-weight:400}
 @media(max-width:600px){.mentor-form-col,.mentor-list-col{padding:16px 18px}}
 @media(max-width:480px){
   .time-row{flex-wrap:wrap}

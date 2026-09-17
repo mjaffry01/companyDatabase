@@ -1844,13 +1844,67 @@ function keywordShortlistCompanies_(query, companies){
   }).sort((a, b) => b.score - a.score).slice(0, JOB_SEARCH_SHORTLIST_SIZE).map(x => x.c);
 }
 
-// Best-effort, bounded to one fetch per shortlisted company. Many career
-// pages are single-page JavaScript apps that render nothing without a real
-// browser, so a fetch returning no match does not mean there are no
-// matching jobs - only that this quick check could not confirm one.
+// Greenhouse and Lever are two of the most common ATS platforms and both
+// expose a free, public, structured JSON API of open roles - no scraping,
+// no JavaScript-rendering problem, and no guessing from page text. When a
+// saved career URL matches one of these, that real job list is used instead
+// of a raw-text guess. Workday (the other very common one) is deliberately
+// not covered here: its public API needs a POST with search facets that
+// varies per tenant, which is too fragile to guess generically.
+function detectAtsBoard_(url){
+  const u = String(url || '');
+  let m = /(?:^https?:\/\/)?boards\.greenhouse\.io\/([a-zA-Z0-9_-]+)/i.exec(u) || /^https?:\/\/([a-zA-Z0-9_-]+)\.greenhouse\.io/i.exec(u);
+  if(m) return { platform: 'Greenhouse', token: m[1] };
+  m = /(?:^https?:\/\/)?jobs\.lever\.co\/([a-zA-Z0-9_-]+)/i.exec(u);
+  if(m) return { platform: 'Lever', token: m[1] };
+  return null;
+}
+function fetchGreenhouseJobs_(token){
+  const response = UrlFetchApp.fetch('https://boards-api.greenhouse.io/v1/boards/' + encodeURIComponent(token) + '/jobs', { muteHttpExceptions: true });
+  if(response.getResponseCode() !== 200) return null;
+  const data = JSON.parse(response.getContentText());
+  const jobs = Array.isArray(data.jobs) ? data.jobs : [];
+  return jobs.map(j => ({ title: clampText(j.title, 200), url: j.absolute_url, location: clampText((j.location && j.location.name) || '', 100) }));
+}
+function fetchLeverJobs_(token){
+  const response = UrlFetchApp.fetch('https://api.lever.co/v0/postings/' + encodeURIComponent(token) + '?mode=json', { muteHttpExceptions: true });
+  if(response.getResponseCode() !== 200) return null;
+  const data = JSON.parse(response.getContentText());
+  if(!Array.isArray(data)) return null;
+  return data.map(j => ({ title: clampText(j.text, 200), url: j.hostedUrl, location: clampText((j.categories && j.categories.location) || '', 100) }));
+}
+
+// Bounded to one fetch per shortlisted company. Tries a real ATS API first
+// (ground truth: an actual list of open roles); only falls back to guessing
+// from raw page text when the career URL isn't on a platform with a public
+// API. Many career pages are single-page JavaScript apps that render
+// nothing without a real browser, so a page-text fetch returning no match
+// does not mean there are no matching jobs - only that this quick check
+// could not confirm one.
 function checkCareerPageForQuery_(company, query){
   const words = normalizeKey(query).split(/[^a-z0-9]+/).filter(w => w.length > 2);
-  const result = { name: company.n, url: company.c, sector: company.s, matched: false, snippet: '', fetchError: '' };
+  const result = { name: company.n, url: company.c, sector: company.s, matched: false, snippet: '', fetchError: '', jobs: [], source: 'page' };
+
+  const ats = detectAtsBoard_(company.c);
+  if(ats){
+    try{
+      const jobs = ats.platform === 'Greenhouse' ? fetchGreenhouseJobs_(ats.token) : fetchLeverJobs_(ats.token);
+      if(jobs){
+        result.source = ats.platform;
+        const matchingJobs = words.length ? jobs.filter(j => words.some(w => normalizeKey(j.title).includes(w))) : jobs;
+        if(matchingJobs.length){
+          result.matched = true;
+          result.jobs = matchingJobs.slice(0, 5);
+          result.snippet = matchingJobs.length + ' matching open role' + (matchingJobs.length === 1 ? '' : 's') + ' via ' + ats.platform;
+        }else{
+          result.fetchError = 'Checked ' + jobs.length + ' open role' + (jobs.length === 1 ? '' : 's') + ' on ' + ats.platform + ' - none matched your search terms.';
+        }
+        return result;
+      }
+    }catch(error){ console.error('ATS fetch failed for ' + company.n, error); }
+    // Falls through to the raw-page-text check below if the API call itself failed.
+  }
+
   try{
     const response = UrlFetchApp.fetch(company.c, { muteHttpExceptions: true, followRedirects: true });
     if(response.getResponseCode() >= 300){
