@@ -19,7 +19,7 @@ index.html (+ auth.js, auth-config.js)         apps-script/Code.gs
                                                        v
                                           Google Sheet "Jobfinder"
                                           (Company Directory / ReferrerContact /
-                                           Members / Resumes / Mentors /
+                                           Members / Visits / Resumes / Mentors /
                                            MentorSeekers / MentorMatches tabs)
                                                        |
                                                        v
@@ -55,6 +55,13 @@ index.html (+ auth.js, auth-config.js)         apps-script/Code.gs
   `Members` (approved sign-ins), and `Resumes` (resume-upload log) tabs. Resume files
   themselves land in a Drive folder named "Professional Resumes Raw Data" (auto-created
   by the script), owned by whichever account deployed the script.
+- **Who's visited**: the `Visits` tab (auto-created on first use) is a running tally, one
+  row per person - Email, Name, Visit count, First visit at, Last visit at. `recordVisit_`
+  bumps it every time an approved member's browser passes the `membership` check, which
+  `auth.js` runs on every page load (fresh sign-in or a restored session), so it's a real
+  count of how often each person has opened the app, not just a raw request log. Like the
+  notification emails elsewhere in this file, a failure here is logged and swallowed -
+  it never blocks sign-in.
 - **Resume uploads are Word-only** (`.doc`/`.docx`; a Google Doc link is still accepted
   as an alternative to a file). A member can see and remove their own past uploads from
   the Resumes tab (`myResumes`/`deleteResume` actions) — deleting trashes the Drive file

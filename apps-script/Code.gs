@@ -99,6 +99,7 @@ function doPost(e){
     if(action === 'membership'){
       const approved = checkMembership(email, identity.sub);
       if(!approved) return json({approved:false});
+      recordVisit_(email, identity.name);
       const session = {sessionToken: issueSessionToken_(email, identity.name), sessionExpiresInMs: SESSION_TOKEN_TTL_MS};
       if(body.includeBootstrap !== true) return json(Object.assign({approved:true}, session));
       const contacts = getContacts();
@@ -334,6 +335,50 @@ function checkMembership(email, sub){
   if(notifyAdmin) notifyAdminsOfPendingMember(email, sub);
   if(sendWelcome) sendWelcomeEmail(email);
   return approved;
+}
+
+// ---- Visit tally ----
+const VISIT_LOG_SHEET = 'Visits';
+
+function ensureVisitLogSheet_(){
+  let sheet = ss().getSheetByName(VISIT_LOG_SHEET);
+  if(!sheet){
+    sheet = ss().insertSheet(VISIT_LOG_SHEET);
+    sheet.appendRow(['Email', 'Name', 'Visit count', 'First visit at', 'Last visit at']);
+  }
+  return sheet;
+}
+
+// Called once per page load - checkAccess() in auth.js runs the 'membership'
+// action on every fresh sign-in and every restored session, so this becomes
+// a running tally of who has opened the app and how many times, one row per
+// person. Best-effort like the notification emails elsewhere in this file: a
+// failure here is logged and swallowed, never blocking sign-in.
+function recordVisit_(email, name){
+  const lock = LockService.getScriptLock();
+  lock.waitLock(10000);
+  try{
+    const sheet = ensureVisitLogSheet_();
+    const data = sheet.getDataRange().getValues();
+    const target = String(email).toLowerCase();
+    let row = -1;
+    for(let i = 1; i < data.length; i++){
+      if(String(data[i][0]).toLowerCase() === target){ row = i + 1; break; }
+    }
+    const now = new Date();
+    if(row === -1){
+      sheet.appendRow([email, name || '', 1, now, now]);
+    }else{
+      const count = Number(sheet.getRange(row, 3).getValue()) || 0;
+      sheet.getRange(row, 3).setValue(count + 1);
+      sheet.getRange(row, 5).setValue(now);
+      if(name) sheet.getRange(row, 2).setValue(name);
+    }
+  }catch(error){
+    console.error('Visit log failed', error);
+  }finally{
+    lock.releaseLock();
+  }
 }
 
 function sendPendingWelcomeEmails(){
