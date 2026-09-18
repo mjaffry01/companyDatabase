@@ -431,9 +431,9 @@
       <div class="ai-policy">
         <h3><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> How AI is used here</h3>
         <ul>
-          <li>AI is used in a few clearly-labeled spots: <strong>Resume Fit</strong> comparisons, AI-suggested mentor matches, and AI-assisted job search across saved career pages. In each case, your text (and any file or screenshot you attach) is converted to text and sent to Google Gemini only to produce that one result.</li>
+          <li>AI is used in a few clearly-labeled spots: <strong>Resume Fit</strong> comparisons, AI-suggested mentor matches, and AI-assisted job search across saved career pages. In each case, your text (and any file or screenshot you attach) is converted to text and sent to <span class="ai-provider-name">Google Gemini</span> — the shared key by default, or OpenAI/Gemini via your own key — only to produce that one result.</li>
           <li>Nothing is posted, shared with an employer, or acted on automatically — a person always decides what to do with an AI suggestion.</li>
-          <li>You can add your own Gemini or OpenAI key from your profile menu to run AI features on your own quota instead of the shared one. That key is stored only in your browser, never on our servers.</li>
+          <li>You can add your own Gemini or OpenAI key from your profile menu to run AI features on your own quota instead of the shared one — the app then uses that provider everywhere AI is used. That key is stored only in your browser, never on our servers.</li>
           <li>Opportunities you post are saved to a private Google Drive folder for possible future AI reading — that analysis isn't switched on yet, so today it's simply stored, visible only to you and the Drive owner.</li>
           <li>Resumes uploaded in the Resumes tab go to a private Drive folder for the community's referral use, not into any AI system.</li>
           <li>If AI ranking hasn't been turned on by an admin, search and matching quietly fall back to plain keyword matching — nothing breaks, it's just less smart.</li>
@@ -571,7 +571,7 @@
         <div class="add-custom">
           <div class="declaration">
             <h3 id="fitTitle"><i class="fa-solid fa-scale-balanced" aria-hidden="true"></i> Compare a resume to an opportunity</h3>
-            <p>Put a resume on the left and a job description or opportunity on the right. You can paste text, drop a Word/Excel/PDF/HTML file, or paste a screenshot. Those files are converted to text, then Gemini checks skills, years of experience, and projects against the JD.</p>
+            <p>Put a resume on the left and a job description or opportunity on the right. You can paste text, drop a Word/Excel/PDF/HTML file, or paste a screenshot. Those files are converted to text, then <span class="ai-provider-name">Google Gemini</span> checks skills, years of experience, and projects against the JD.</p>
           </div>
           <form id="fitForm" class="add-form">
             <div class="fit-grid">
@@ -605,7 +605,7 @@
                   <label for="fit-opportunity-files">Or attach Word, Excel, PDF, HTML, text, JPG, PNG, GIF or WebP</label>
                   <input id="fit-opportunity-files" type="file" multiple accept=".txt,.html,.htm,.doc,.docx,.xls,.xlsx,.pdf,.jpg,.jpeg,.png,.gif,.webp">
                 </div>
-                <p class="opportunity-hint">Up to 5 files, 5 MB total. Images and documents are converted to text before Gemini compares them.</p>
+                <p class="opportunity-hint">Up to 5 files, 5 MB total. Images and documents are converted to text before <span class="ai-provider-name">Google Gemini</span> compares them.</p>
               </fieldset>
             </div>
             <div class="form-actions">
@@ -946,10 +946,26 @@ function getUserAiConfig(){
 }
 function setUserAiConfig(config){
   try{ localStorage.setItem('userAiConfig', JSON.stringify(config)); }catch(error){ /* storage unavailable */ }
+  refreshAiProviderLabels();
 }
 function clearUserAiConfig(){
   try{ localStorage.removeItem('userAiConfig'); }catch(error){ /* storage unavailable */ }
+  refreshAiProviderLabels();
 }
+// The shared, script-configured key is Gemini today - this is only the label
+// shown when a member hasn't brought their own key, and updates automatically
+// if that ever changes.
+const SHARED_AI_PROVIDER_LABEL = 'Google Gemini';
+function aiProviderLabel(){
+  const config = getUserAiConfig();
+  if(!config) return SHARED_AI_PROVIDER_LABEL;
+  return config.provider === 'openai' ? 'OpenAI' : 'Google Gemini';
+}
+function refreshAiProviderLabels(){
+  const label = aiProviderLabel();
+  document.querySelectorAll('.ai-provider-name').forEach(el => { el.textContent = label; });
+}
+refreshAiProviderLabels();
 
 async function contactApi(action, data){
   if(!window.currentCredential()) throw new Error('Please sign in first.');

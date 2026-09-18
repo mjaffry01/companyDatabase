@@ -70,8 +70,8 @@ function renderResumeFit(result, method, status){
   const intro = document.createElement('p');
   intro.setAttribute('role', 'status');
   intro.textContent = status === 'Awaiting LLM setup'
-    ? 'The resume and JD were saved on this screen, but Gemini is not connected yet.'
-    : 'Gemini compared skills, years of experience, and projects against the JD' + (method ? ' (' + method + ').' : '.');
+    ? 'The resume and JD were saved on this screen, but ' + aiProviderLabel() + ' is not connected yet.'
+    : aiProviderLabel() + ' compared skills, years of experience, and projects against the JD' + (method ? ' (' + method + ').' : '.');
   root.append(intro);
   if(!result) return;
   root.append(
@@ -184,7 +184,7 @@ async function generateTailoredResumeFlow(comparison){
         ? 'Tailored resumes are not on the live Apps Script yet. Deploy the updated Code.gs and ResumeAnalysis.gs, then try again.'
         : json.error);
     }
-    if(!json.ok) throw new Error('Gemini is not connected yet.');
+    if(!json.ok) throw new Error(aiProviderLabel() + ' is not connected yet.');
     status.textContent = 'Tailored resume ready.';
     document.getElementById('fitTailorSection').append(renderTailoredResume(json.tailored, json.fileName, json.docxBase64, json.githubSuggestions));
     btn.remove();
@@ -240,7 +240,7 @@ document.getElementById('fitForm').addEventListener('submit', async event => {
   const button = document.getElementById('fitCompareBtn');
   const note = document.getElementById('fitFormNote');
   button.disabled = true;
-  note.textContent = 'Converting the JD to text, then Gemini will compare…';
+  note.textContent = 'Converting the JD to text, then ' + aiProviderLabel() + ' will compare…';
   document.getElementById('fitReport').hidden = true;
   try{
     const opportunityFiles = [];
@@ -259,7 +259,7 @@ document.getElementById('fitForm').addEventListener('submit', async event => {
     }
     fitLastRequest = json.status === 'Awaiting LLM setup' ? null : requestPayload;
     renderResumeFit(json.comparison, json.method, json.status);
-    note.textContent = json.status === 'Awaiting LLM setup' ? 'Waiting for Gemini to be connected.' : 'Comparison complete.';
+    note.textContent = json.status === 'Awaiting LLM setup' ? 'Waiting for ' + aiProviderLabel() + ' to be connected.' : 'Comparison complete.';
   }catch(error){
     fitLastRequest = null;
     note.textContent = '';
