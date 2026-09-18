@@ -180,6 +180,40 @@
   #aiKeyForm input:focus{ border-color: var(--teal); }
   .ai-key-actions{ display:flex; gap:10px; margin-top:12px; flex-wrap:wrap; }
   #aiKeyStatus{ font-size:12.5px; color:var(--text-dim); margin-top:8px; }
+
+  dialog{
+    border:none; border-radius:14px; padding:24px; width:min(94vw,560px); max-height:88vh; overflow-y:auto;
+    background:var(--paper); color:var(--text); box-shadow:var(--paper-shadow); font-family:'IBM Plex Sans', sans-serif;
+  }
+  dialog::backdrop{ background:rgba(20,24,28,.6); }
+  dialog h2{ font-family:'Fraunces', serif; font-size:19px; margin:0; }
+  dialog h3{ font-family:'Fraunces', serif; font-size:15.5px; margin:0 0 6px; color:var(--teal-dark); }
+  .profile-title{ display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:14px; }
+  dialog dl{ font-size:13px; color:var(--text-dim); margin:0 0 14px; }
+  dialog dt{ font-weight:600; color:var(--text); margin-top:8px; }
+  dialog dd{ margin:2px 0 0; }
+  dialog hr{ border:none; border-top:1px solid var(--paper-line); margin:18px 0; }
+
+  .ai-key-callout{
+    background:var(--brass-wash); border:1px solid #E6D3AB; border-radius:10px; padding:12px 14px;
+    font-size:12.5px; color:#5C4A26; line-height:1.6; margin:14px 0 18px; display:flex; gap:10px; align-items:flex-start;
+  }
+  .ai-key-callout i{ color:#8A6A28; font-size:16px; margin-top:1px; flex-shrink:0; }
+  .provider-picker{ display:flex; gap:10px; margin-bottom:6px; }
+  .provider-option{
+    flex:1; display:flex; flex-direction:column; align-items:center; gap:6px; padding:14px 10px;
+    border:2px solid var(--paper-line); border-radius:10px; background:#fff; cursor:pointer;
+    font-size:13px; font-weight:600; color:var(--text-dim); text-align:center; transition: border-color .15s ease, background .15s ease, color .15s ease;
+  }
+  .provider-option i{ font-size:22px; color:var(--text-dim); }
+  .provider-option.active{ border-color:var(--teal); color:var(--teal-dark); background:var(--teal-wash); }
+  .provider-option.active i{ color:var(--teal); }
+  .wizard-step{ margin-bottom:18px; }
+  .wizard-step-label{ font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--brass); font-weight:700; margin-bottom:8px; }
+  .wizard-instructions{ background:#fff; border:1px solid var(--paper-line); border-radius:8px; padding:12px 14px; font-size:13px; color:var(--text-dim); line-height:1.7; margin-bottom:10px; }
+  .wizard-instructions ol{ margin:0; padding-left:18px; }
+  #aiKeySummary{ padding-top:2px; }
+  #aiKeySummary p{ margin:2px 0 10px; }
   .location-input-row{ display:flex; gap:8px; align-items:center; }
   .location-input-row input{ flex:1; min-width:0; }
   .location-input-row button{ flex-shrink:0; }
@@ -237,6 +271,41 @@
   ::-webkit-scrollbar{ width:8px; }
   ::-webkit-scrollbar-thumb{ background: var(--paper-line); border-radius: 4px; }
 
+  @keyframes fadeUp{ from{ opacity:0; transform:translateY(14px); } to{ opacity:1; transform:translateY(0); } }
+  @keyframes fadeIn{ from{ opacity:0; } to{ opacity:1; } }
+  @keyframes pulseArrow{ 0%,100%{ opacity:.35; transform:translateX(0); } 50%{ opacity:1; transform:translateX(3px); } }
+
+  .about-panel{ margin-top:30px; padding-top:26px; border-top:1px dashed var(--paper-line); animation: fadeIn .6s ease both; }
+  .about-eyebrow{ font-family:'Fraunces', serif; font-weight:600; font-size:16px; color:var(--teal-dark); margin:0 0 8px; display:flex; align-items:center; gap:9px; }
+  .about-intro p{ font-size:13.5px; color:var(--text-dim); line-height:1.7; margin:0 0 20px; }
+  .about-intro strong{ color:var(--text); }
+
+  .journey-strip{ display:flex; align-items:center; flex-wrap:wrap; gap:7px 5px; margin-bottom:24px; padding:14px; background:var(--teal-wash); border-radius:10px; }
+  .journey-step{ display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; color:var(--teal-dark); background:#fff; padding:6px 11px; border-radius:999px; border:1px solid #CFE3DF; opacity:0; animation: fadeUp .5s ease forwards; animation-delay: calc(var(--i) * 110ms); }
+  .journey-arrow{ color:var(--teal); font-size:12px; opacity:0; animation: fadeUp .5s ease forwards calc(var(--i) * 110ms), pulseArrow 1.8s ease-in-out 1.8s infinite; }
+
+  .feature-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(215px,1fr)); gap:12px; margin-bottom:24px; }
+  .feature-card{ background:#fff; border:1px solid var(--paper-line); border-radius:10px; padding:15px 16px; opacity:0; animation: fadeUp .55s ease forwards; animation-delay: calc(var(--i) * 70ms); transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease; }
+  .feature-card:hover{ transform:translateY(-3px); box-shadow: 0 12px 22px -14px rgba(20,24,28,.3); border-color:var(--teal); }
+  .feature-card .card-icon{ font-size:18px; color:var(--teal); margin-bottom:9px; display:block; }
+  .feature-card h4{ font-family:'Fraunces', serif; font-size:14.5px; margin:0 0 6px; color:var(--text); }
+  .feature-card p{ font-size:12.5px; color:var(--text-dim); line-height:1.55; margin:0; }
+
+  .ai-policy{ background:var(--brass-wash); border:1px solid #E6D3AB; border-radius:10px; padding:17px 18px; margin-bottom:20px; opacity:0; animation: fadeUp .6s ease forwards; animation-delay:.5s; }
+  .ai-policy h3{ font-family:'Fraunces', serif; font-size:15.5px; margin:0 0 10px; color:#7A5A20; display:flex; align-items:center; gap:8px; }
+  .ai-policy ul{ margin:0; padding-left:18px; font-size:12.5px; color:#5C4A26; line-height:1.75; }
+  .ai-policy li{ margin-bottom:5px; }
+
+  .mentor-highlight{ background:var(--teal-wash); border:1px solid #CFE3DF; border-radius:10px; padding:17px 18px; opacity:0; animation: fadeUp .6s ease forwards; animation-delay:.6s; }
+  .mentor-highlight h3{ font-family:'Fraunces', serif; font-size:15.5px; margin:0 0 8px; color:var(--teal-dark); display:flex; align-items:center; gap:8px; }
+  .mentor-highlight p{ font-size:13px; color:var(--text-dim); line-height:1.65; margin:0 0 12px; }
+  .mentor-steps{ display:flex; flex-wrap:wrap; gap:8px; }
+  .mentor-steps span{ font-size:12px; font-weight:600; color:var(--teal-dark); background:#fff; border:1px solid #CFE3DF; padding:5px 11px; border-radius:999px; white-space:nowrap; }
+
+  @media (prefers-reduced-motion: reduce){
+    .about-panel, .about-panel *{ animation:none !important; opacity:1 !important; transform:none !important; }
+  }
+
   @media (max-width: 560px){
     html,body{ max-width:100%; overflow-x:hidden; }
     body{ padding:20px 10px 40px; }
@@ -248,6 +317,8 @@
     .field-row{ flex-direction:column; }
     .ledger-footer-head{ flex-direction:column; align-items:flex-start; gap:4px; }
     .setup .url-row{ flex-direction:column; }
+    .feature-grid{ grid-template-columns:1fr; }
+    .journey-strip{ justify-content:flex-start; }
     .tab-btn{ font-size:14px; padding:13px 13px; }
     .refresh-btn{ font-size:0; padding-left:14px; padding-right:14px; }
     .refresh-btn::before{ content:none; }
@@ -295,6 +366,91 @@
     <div id="googleSignInDiv" hidden></div>
     <button class="btn btn-primary" id="checkAccessBtn" onclick="checkAccess()" hidden>Check access</button>
     <button class="btn btn-ghost" id="logoutBtn" onclick="logout()" hidden>Sign out</button>
+
+    <div class="about-panel">
+      <div class="about-intro">
+        <p class="about-eyebrow"><i class="fa-solid fa-compass" aria-hidden="true"></i> What is the Company Contact Book?</p>
+        <p>This isn't another job board to shout your resume into. It's a <strong>guided, community-run tool</strong> for finding work through people who can actually help — a <strong>referrer</strong> already inside a company, a <strong>mentor</strong> who's done the job before, and optional <strong>AI</strong> that checks your resume against a role before you send it. Sign in with Google above, then use whichever tab below matches where you're at.</p>
+      </div>
+
+      <div class="journey-strip" aria-hidden="true">
+        <span class="journey-step" style="--i:0"><i class="fa-solid fa-file-lines" aria-hidden="true"></i> Upload resume</span>
+        <i class="fa-solid fa-arrow-right journey-arrow" style="--i:1" aria-hidden="true"></i>
+        <span class="journey-step" style="--i:2"><i class="fa-solid fa-scale-balanced" aria-hidden="true"></i> AI fit check</span>
+        <i class="fa-solid fa-arrow-right journey-arrow" style="--i:3" aria-hidden="true"></i>
+        <span class="journey-step" style="--i:4"><i class="fa-solid fa-handshake" aria-hidden="true"></i> Find a referrer</span>
+        <i class="fa-solid fa-arrow-right journey-arrow" style="--i:5" aria-hidden="true"></i>
+        <span class="journey-step" style="--i:6"><i class="fa-solid fa-compass" aria-hidden="true"></i> Line up a mentor</span>
+        <i class="fa-solid fa-arrow-right journey-arrow" style="--i:7" aria-hidden="true"></i>
+        <span class="journey-step" style="--i:8"><i class="fa-solid fa-briefcase" aria-hidden="true"></i> Land the role</span>
+      </div>
+
+      <div class="feature-grid">
+        <div class="feature-card" style="--i:0">
+          <i class="fa-solid fa-handshake card-icon" aria-hidden="true"></i>
+          <h4>Add a Referrer</h4>
+          <p>Currently employed? Share your own contact, or a colleague's, so a job seeker in the community can get a real warm referral instead of a cold application.</p>
+        </div>
+        <div class="feature-card" style="--i:1">
+          <i class="fa-solid fa-magnifying-glass card-icon" aria-hidden="true"></i>
+          <h4>Search &amp; Lookup Referrer</h4>
+          <p>Job hunting? Search saved companies by name or location to find someone already on the inside before you apply cold.</p>
+        </div>
+        <div class="feature-card" style="--i:2">
+          <i class="fa-solid fa-compass card-icon" aria-hidden="true"></i>
+          <h4>Become a Mentor</h4>
+          <p>Working professionals can register to guide someone starting out — a monthly call, a resume look-over, a nudge in the right direction — then adopt whoever they can help.</p>
+        </div>
+        <div class="feature-card" style="--i:3">
+          <i class="fa-solid fa-hands-holding-child card-icon" aria-hidden="true"></i>
+          <h4>Find a Mentor</h4>
+          <p>Job seekers can line up for a working professional in their corner to sanity-check a resume, prep for an interview, or explain what a role is really like.</p>
+        </div>
+        <div class="feature-card" style="--i:4">
+          <i class="fa-solid fa-file-lines card-icon" aria-hidden="true"></i>
+          <h4>Resumes</h4>
+          <p>Recently graduated or between jobs? Drop your resume so the community can refer you the moment a matching opportunity shows up.</p>
+        </div>
+        <div class="feature-card" style="--i:5">
+          <i class="fa-solid fa-scale-balanced card-icon" aria-hidden="true"></i>
+          <h4>Resume Fit</h4>
+          <p>Paste a resume and a job description side by side and let AI score how well your skills, experience, and projects actually match the role — before you spend a referral on it.</p>
+        </div>
+        <div class="feature-card" style="--i:6">
+          <i class="fa-solid fa-bullhorn card-icon" aria-hidden="true"></i>
+          <h4>Opportunities</h4>
+          <p>Post or browse referrals, internships, and openings shared by the community — for your own company or on behalf of another.</p>
+        </div>
+        <div class="feature-card" style="--i:7">
+          <i class="fa-solid fa-briefcase card-icon" aria-hidden="true"></i>
+          <h4>Careers</h4>
+          <p>Browse saved company career pages and HR contacts, or let AI search across all of them at once for a role that matches what you're looking for.</p>
+        </div>
+      </div>
+
+      <div class="ai-policy">
+        <h3><i class="fa-solid fa-shield-halved" aria-hidden="true"></i> How AI is used here</h3>
+        <ul>
+          <li>AI is used in a few clearly-labeled spots: <strong>Resume Fit</strong> comparisons, AI-suggested mentor matches, and AI-assisted job search across saved career pages. In each case, your text (and any file or screenshot you attach) is converted to text and sent to Google Gemini only to produce that one result.</li>
+          <li>Nothing is posted, shared with an employer, or acted on automatically — a person always decides what to do with an AI suggestion.</li>
+          <li>You can add your own Gemini or OpenAI key from your profile menu to run AI features on your own quota instead of the shared one. That key is stored only in your browser, never on our servers.</li>
+          <li>Opportunities you post are saved to a private Google Drive folder for possible future AI reading — that analysis isn't switched on yet, so today it's simply stored, visible only to you and the Drive owner.</li>
+          <li>Resumes uploaded in the Resumes tab go to a private Drive folder for the community's referral use, not into any AI system.</li>
+          <li>If AI ranking hasn't been turned on by an admin, search and matching quietly fall back to plain keyword matching — nothing breaks, it's just less smart.</li>
+        </ul>
+      </div>
+
+      <div class="mentor-highlight">
+        <h3><i class="fa-solid fa-people-arrows" aria-hidden="true"></i> The mentor program</h3>
+        <p>Two tabs, one goal: pair people who've done the job with people trying to get it. A working professional registers under <em>Become a Mentor</em> with their expertise, years of experience, and how many mentees they can take — then browses job seekers and <em>adopts</em> the ones they think they can actually help. A job seeker registers under <em>Find a Mentor</em> with what they need help with, then <em>requests</em> a mentor whose background fits. Either side can offer optional times to book a call once connected, and mentors may offer paid sessions if they choose — but every mentor agrees up front to be upfront about any fee and never to guarantee a job outcome.</p>
+        <div class="mentor-steps">
+          <span>1. Register</span>
+          <span>2. Browse &amp; adopt / request</span>
+          <span>3. Connect</span>
+          <span>4. Book a time</span>
+        </div>
+      </div>
+    </div>
   </section>
   <div class="ledger" id="ledgerRoot" hidden>
     <div class="profile-toolbar"><button class="btn btn-ghost" id="profileButton" onclick="openUserProfile()" aria-label="Open profile" aria-haspopup="dialog" aria-controls="profileDialog"><i class="fa-solid fa-circle-user" aria-hidden="true"></i> <span id="profileButtonName"></span></button></div>
@@ -454,7 +610,7 @@
             </div>
             <div class="form-actions">
               <span class="form-note" id="fitFormNote" role="status"></span>
-              <button class="btn btn-primary" id="fitCompareBtn" type="submit">Compare with Gemini</button>
+              <button class="btn btn-primary" id="fitCompareBtn" type="submit">Compare with AI</button>
             </div>
           </form>
           <div id="fitReport" class="fit-report" hidden></div>
@@ -650,20 +806,61 @@
   <button class="btn btn-ghost" onclick="openUserProfile()">Refresh profile</button>
   <button class="btn btn-ghost" onclick="logout()">Sign out</button>
   <hr>
+  <div id="aiKeySummary">
+    <h3><i class="fa-solid fa-key" aria-hidden="true"></i> Your own AI key (optional)</h3>
+    <p class="opportunity-hint" id="aiKeySummaryStatus">Using the shared key for AI features.</p>
+    <button class="btn btn-ghost" type="button" onclick="openAiKeyWizard()"><i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i> Set up / change your AI key</button>
+  </div>
+</dialog>
+<dialog id="aiKeyWizard" aria-labelledby="aiKeyWizardTitle">
+  <div class="profile-title">
+    <h2 id="aiKeyWizardTitle"><i class="fa-solid fa-key" aria-hidden="true"></i> Set up your own AI key</h2>
+    <button class="btn btn-ghost" type="button" onclick="document.getElementById('aiKeyWizard').close()" aria-label="Close">Close</button>
+  </div>
+  <p style="font-size:13px;color:var(--text-dim);line-height:1.6;margin:0;">AI features here — resume fit, mentor search, job search, opportunity/resume analysis, and tailored resumes — run on a shared key by default. This is entirely optional: adding your own key just lets you use your personal quota instead.</p>
+
+  <div class="ai-key-callout">
+    <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+    <span>Your key is saved only in <strong>this browser, on this device</strong> — never on our servers. It will <strong>not transfer</strong> if you switch to a new phone, a new computer, a different browser, or a private/incognito window; you'll need to add it again there. Clearing this browser's site data also removes it.</span>
+  </div>
+
+  <div class="wizard-step">
+    <div class="wizard-step-label">Step 1 · Pick a provider</div>
+    <div class="provider-picker">
+      <div class="provider-option active" id="wizardProviderGemini" role="button" tabindex="0" onclick="setWizardProvider('gemini')" onkeyup="if(event.key==='Enter'||event.key===' ')setWizardProvider('gemini')">
+        <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i> Google Gemini
+      </div>
+      <div class="provider-option" id="wizardProviderOpenai" role="button" tabindex="0" onclick="setWizardProvider('openai')" onkeyup="if(event.key==='Enter'||event.key===' ')setWizardProvider('openai')">
+        <i class="fa-solid fa-robot" aria-hidden="true"></i> OpenAI
+      </div>
+    </div>
+  </div>
+
+  <div class="wizard-step">
+    <div class="wizard-step-label">Step 2 · Create the key</div>
+    <div class="wizard-instructions" id="wizardInstructions"></div>
+    <a class="btn btn-primary" id="wizardOpenProviderBtn" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer"></a>
+  </div>
+
   <form id="aiKeyForm">
-    <h3>Your own AI key (optional)</h3>
-    <p class="opportunity-hint">Used automatically for AI features - posting analysis, resume analysis, mentor search, job search, resume fit, and tailored resumes - instead of the shared key. Stored only in this browser, never on our servers.</p>
-    <label for="aiKeyProvider">Provider</label>
-    <select id="aiKeyProvider"><option value="gemini">Google Gemini</option><option value="openai">OpenAI</option></select>
-    <label for="aiKeyModel">Model</label>
-    <input type="text" id="aiKeyModel" placeholder="e.g. gemini-2.5-flash or gpt-4o-mini" maxlength="100">
-    <label for="aiKeyValue">API key</label>
-    <input type="password" id="aiKeyValue" autocomplete="off" maxlength="200">
+    <input type="hidden" id="aiKeyProvider" value="gemini">
+    <div class="wizard-step">
+      <div class="wizard-step-label">Step 3 · Paste it here</div>
+      <label for="aiKeyModel">Model</label>
+      <input type="text" id="aiKeyModel" placeholder="e.g. gemini-2.5-flash" maxlength="100">
+      <label for="aiKeyValue">API key</label>
+      <input type="password" id="aiKeyValue" autocomplete="off" maxlength="200">
+    </div>
     <div class="ai-key-actions">
       <button class="btn btn-primary" type="submit">Save my key</button>
       <button class="btn btn-ghost" type="button" id="aiKeyClearButton">Use the shared key instead</button>
+      <button class="btn btn-ghost" type="button" onclick="document.getElementById('aiKeyWizard').close()">Skip for now</button>
     </div>
     <p id="aiKeyStatus" role="status"></p>
+    <label class="confirm-row" id="aiKeyDontAskRow" hidden style="margin-top:8px;">
+      <input type="checkbox" id="aiKeyDontAskAgain">
+      <span>Don't ask again on this device</span>
+    </label>
   </form>
 </dialog>
 <dialog id="editRequestDialog" aria-labelledby="requestTitle" style="width:min(94vw,520px);max-height:90vh;overflow:auto;border:0;border-radius:14px;padding:20px;">
@@ -800,6 +997,7 @@ async function connect(bootstrap){
     updateKicker();
     renderAll();
     if(currentTab === 'lookup') renderLookup();
+    if(typeof maybeOfferAiKeySetup === 'function') maybeOfferAiKeySetup();
   }catch(err){
     if(token !== window.currentCredential()) return;
     document.getElementById('authStatus').textContent = 'Could not load contacts: ' + err.message;
