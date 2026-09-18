@@ -847,7 +847,11 @@
     <div class="wizard-step">
       <div class="wizard-step-label">Step 3 · Paste it here</div>
       <label for="aiKeyModel">Model</label>
-      <input type="text" id="aiKeyModel" placeholder="e.g. gemini-2.5-flash" maxlength="100">
+      <select id="aiKeyModel"></select>
+      <div id="aiKeyModelCustomWrap" hidden>
+        <label for="aiKeyModelCustom">Custom model ID</label>
+        <input type="text" id="aiKeyModelCustom" placeholder="e.g. gemini-2.5-flash-8b" maxlength="100">
+      </div>
       <label for="aiKeyValue">API key</label>
       <input type="password" id="aiKeyValue" autocomplete="off" maxlength="200">
     </div>

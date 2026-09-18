@@ -40,28 +40,66 @@ const AI_PROVIDER_INFO = {
     label: 'Google Gemini',
     url: 'https://aistudio.google.com/apikey',
     urlLabel: 'Open Google AI Studio',
-    modelPlaceholder: 'e.g. gemini-2.5-flash',
     steps: [
       'Open Google AI Studio and sign in with any Google account (it does not have to be the one you use here).',
       'Click "Create API key", and pick or create a Google Cloud project if it asks.',
       'Copy the key it shows you - you can view it again later in AI Studio if you lose it.',
       'Come back to this tab, paste it below, and save.'
+    ],
+    models: [
+      {value:'gemini-2.5-flash', label:'Gemini 2.5 Flash — recommended, fast & cheap'},
+      {value:'gemini-2.5-flash-lite', label:'Gemini 2.5 Flash-Lite — fastest, lowest cost'},
+      {value:'gemini-2.5-pro', label:'Gemini 2.5 Pro — most capable, slower'},
+      {value:'gemini-2.0-flash', label:'Gemini 2.0 Flash — older generation'}
     ]
   },
   openai: {
     label: 'OpenAI',
     url: 'https://platform.openai.com/api-keys',
     urlLabel: 'Open OpenAI API keys',
-    modelPlaceholder: 'e.g. gpt-4o-mini',
     steps: [
       'Open the OpenAI API keys page and sign in, or create an account.',
       'Click "Create new secret key".',
       'Copy it immediately - OpenAI only shows the full key once.',
       'Come back to this tab, paste it below, and save.'
+    ],
+    models: [
+      {value:'gpt-4o-mini', label:'GPT-4o mini — recommended, fast & cheap'},
+      {value:'gpt-4o', label:'GPT-4o — most capable'},
+      {value:'gpt-4.1-mini', label:'GPT-4.1 mini'},
+      {value:'gpt-4.1', label:'GPT-4.1'}
     ]
   }
 };
-function setWizardProvider(provider){
+const AI_CUSTOM_MODEL_VALUE = '__custom__';
+function populateModelSelect(provider, selectedModel){
+  const info = AI_PROVIDER_INFO[provider];
+  const select = document.getElementById('aiKeyModel');
+  const customWrap = document.getElementById('aiKeyModelCustomWrap');
+  const customInput = document.getElementById('aiKeyModelCustom');
+  select.innerHTML = info.models.map(m => '<option value="' + escapeHtml(m.value) + '">' + escapeHtml(m.label) + '</option>').join('')
+    + '<option value="' + AI_CUSTOM_MODEL_VALUE + '">Custom model ID…</option>';
+  const known = info.models.some(m => m.value === selectedModel);
+  if(selectedModel && known){
+    select.value = selectedModel;
+    customWrap.hidden = true;
+    customInput.value = '';
+  }else if(selectedModel){
+    select.value = AI_CUSTOM_MODEL_VALUE;
+    customWrap.hidden = false;
+    customInput.value = selectedModel;
+  }else{
+    select.value = info.models[0].value;
+    customWrap.hidden = true;
+    customInput.value = '';
+  }
+}
+document.getElementById('aiKeyModel').addEventListener('change', event => {
+  const isCustom = event.target.value === AI_CUSTOM_MODEL_VALUE;
+  document.getElementById('aiKeyModelCustomWrap').hidden = !isCustom;
+  if(isCustom) document.getElementById('aiKeyModelCustom').focus();
+});
+function setWizardProvider(provider, selectedModel){
   if(!AI_PROVIDER_INFO[provider]) provider = 'gemini';
   document.getElementById('aiKeyProvider').value = provider;
   document.getElementById('wizardProviderGemini').classList.toggle('active', provider === 'gemini');
@@ -72,20 +110,19 @@ function setWizardProvider(provider){
   const openBtn = document.getElementById('wizardOpenProviderBtn');
   openBtn.href = info.url;
   openBtn.innerHTML = '<i class="fa-solid fa-arrow-up-right-from-square" aria-hidden="true"></i> ' + escapeHtml(info.urlLabel);
-  document.getElementById('aiKeyModel').placeholder = info.modelPlaceholder;
+  populateModelSelect(provider, selectedModel);
 }
 function updateAiKeySummary(config){
   const el = document.getElementById('aiKeySummaryStatus');
   if(!el) return;
   if(config === undefined) config = getUserAiConfig();
   el.textContent = config
-    ? 'Using your own ' + (config.provider === 'openai' ? 'OpenAI' : 'Gemini') + ' key, saved on this device only.'
+    ? 'Using your own ' + (config.provider === 'openai' ? 'OpenAI' : 'Gemini') + ' key (' + config.model + '), saved on this device only.'
     : 'Using the shared key for AI features. Add your own for your personal quota.';
 }
 function loadAiKeyForm(){
   const config = getUserAiConfig();
-  setWizardProvider(config?.provider || 'gemini');
-  document.getElementById('aiKeyModel').value = config?.model || '';
+  setWizardProvider(config?.provider || 'gemini', config?.model);
   document.getElementById('aiKeyValue').value = '';
   document.getElementById('aiKeyValue').placeholder = config ? 'Key saved on this device - enter a new one to replace it' : 'Paste your API key';
   document.getElementById('aiKeyStatus').textContent = config
@@ -96,7 +133,10 @@ function loadAiKeyForm(){
 document.getElementById('aiKeyForm').addEventListener('submit', event => {
   event.preventDefault();
   const provider = document.getElementById('aiKeyProvider').value;
-  const model = document.getElementById('aiKeyModel').value.trim();
+  const modelSelectValue = document.getElementById('aiKeyModel').value;
+  const model = modelSelectValue === AI_CUSTOM_MODEL_VALUE
+    ? document.getElementById('aiKeyModelCustom').value.trim()
+    : modelSelectValue;
   const apiKey = document.getElementById('aiKeyValue').value.trim();
   if(!model || !apiKey){ document.getElementById('aiKeyStatus').textContent = 'Enter both a model and an API key.'; return; }
   setUserAiConfig({provider, model, apiKey});
