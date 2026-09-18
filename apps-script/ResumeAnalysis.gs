@@ -134,9 +134,10 @@ function analyzeResumeFile(fileId, submittedEmail, userAI){
     return status;
   }catch(error){
     // error.message here is always one of this file's own short status strings
-    // (e.g. "LLM request failed.") - never a provider response body or resume
-    // content, so it's safe to surface to the member without violating the
-    // "do not log provider response bodies, tokens, or resume content" rule.
+    // (e.g. "OpenAI request failed (401)." - status code only) - never a
+    // provider response body or resume content, so it's safe to surface to
+    // the member without violating the "do not log provider response
+    // bodies, tokens, or resume content" rule.
     const reason = (error && error.message) || String(error);
     writeResumeAnalysisById(fileId, ['','','','','','','Analysis failed: ' + reason + ' Check provider settings, quota and file readability, then run retryResumeAnalysis.',
       'https://drive.google.com/file/d/' + fileId + '/view',fileId,'Failed',new Date().toISOString(),analysisMethod(config)]);
@@ -191,7 +192,7 @@ function callResumeLLM(file, config, preparedPart){
     method:'post',contentType:'application/json',headers:{Authorization:'Bearer ' + config.apiKey},muteHttpExceptions:true,
     payload:JSON.stringify({model:config.model,store:false,instructions:prompt,input:[{role:'user',content:[part]}],text:{format:{type:'json_schema',name:'resume_analysis',strict:true,schema:schema}}})
   });
-  if(response.getResponseCode() !== 200) throw new Error('LLM request failed.');
+  if(response.getResponseCode() !== 200) throw new Error('OpenAI request failed (' + response.getResponseCode() + ').');
   const body = JSON.parse(response.getContentText());
   if(body.status !== 'completed' || !Array.isArray(body.output)) throw new Error('LLM response incomplete.');
   const content = body.output.filter(item => item.type === 'message').flatMap(item => item.content || []);
@@ -376,7 +377,7 @@ function callComparisonLLM(provider, prompt, schema, parts){
       return {type:'input_file',filename:copy.filename,file_data:copy.file_data};
     })}],text:{format:{type:'json_schema',name:'resume_fit',strict:true,schema:schema}}})
   });
-  if(response.getResponseCode() !== 200) throw new Error('LLM request failed.');
+  if(response.getResponseCode() !== 200) throw new Error('OpenAI request failed (' + response.getResponseCode() + ').');
   const body = JSON.parse(response.getContentText());
   if(body.status !== 'completed' || !Array.isArray(body.output)) throw new Error('LLM response incomplete.');
   const content = body.output.filter(item => item.type === 'message').flatMap(item => item.content || []);
@@ -436,7 +437,7 @@ function extractMediaText(part, config){
         method:'post',contentType:'application/json',headers:{Authorization:'Bearer ' + provider.apiKey},muteHttpExceptions:true,
         payload:JSON.stringify({model:provider.model,store:false,instructions:prompt,input:[{role:'user',content:[part.type === 'input_file' ? {type:'input_file',filename:part.filename,file_data:part.file_data} : {type:'input_text',text:part.text}]}]})
       });
-      if(response.getResponseCode() !== 200) throw new Error('LLM request failed.');
+      if(response.getResponseCode() !== 200) throw new Error('OpenAI request failed (' + response.getResponseCode() + ').');
       const body = JSON.parse(response.getContentText());
       const content = (body.output || []).filter(item => item.type === 'message').flatMap(item => item.content || []);
       const text = content.filter(item => item.type === 'output_text').map(item => item.text).join('');
@@ -512,14 +513,19 @@ function compareResumeToOpportunity(email, data){
   const prompt = comparisonPrompt();
   const schema = comparisonSchema();
   let result, method;
+  const failures = [];
   for(const provider of config.providers){
     try{
       result = validateResumeFit(callComparisonLLM(provider, prompt, schema, [jdPart, resumePart]));
       method = analysisMethod(provider);
       break;
-    }catch(error){ console.error('Resume fit provider ' + provider.provider + ' failed: ' + (error && error.message)); }
+    }catch(error){
+      const message = (error && error.message) || String(error);
+      console.error('Resume fit provider ' + provider.provider + ' failed: ' + message);
+      failures.push(provider.provider + ' (' + provider.model + '): ' + message);
+    }
   }
-  if(!result) throw new Error('Comparison failed. Check Gemini settings, quota, and file readability, then try again.');
+  if(!result) throw new Error('Comparison failed - ' + failures.join('; ') + '. Check the AI key/model above, quota, and file readability, then try again.');
   const sheet = resumeFitSheet();
   sheet.appendRow([new Date(), email, resumePart.source || '', opportunityTitle || opportunityText.slice(0,120),
     result.strengths.join('; '), result.weaknesses.join('; '),
@@ -614,7 +620,7 @@ function callTailoringLLM(provider, prompt, schema, parts){
       return {type:'input_file',filename:part.filename,file_data:part.file_data};
     })}],text:{format:{type:'json_schema',name:'tailored_resume',strict:true,schema:schema}}})
   });
-  if(response.getResponseCode() !== 200) throw new Error('LLM request failed.');
+  if(response.getResponseCode() !== 200) throw new Error('OpenAI request failed (' + response.getResponseCode() + ').');
   const body = JSON.parse(response.getContentText());
   if(body.status !== 'completed' || !Array.isArray(body.output)) throw new Error('LLM response incomplete.');
   const content = body.output.filter(item => item.type === 'message').flatMap(item => item.content || []);
@@ -703,14 +709,19 @@ function generateTailoredResume(email, data){
   const prompt = tailoringPrompt();
   const schema = tailoringSchema();
   let result, method;
+  const failures = [];
   for(const provider of config.providers){
     try{
       result = validateTailoredResume(callTailoringLLM(provider, prompt, schema, [jdPart, contextPart, resumePart]));
       method = analysisMethod(provider);
       break;
-    }catch(error){ console.error('Resume tailoring provider ' + provider.provider + ' failed: ' + (error && error.message)); }
+    }catch(error){
+      const message = (error && error.message) || String(error);
+      console.error('Resume tailoring provider ' + provider.provider + ' failed: ' + message);
+      failures.push(provider.provider + ' (' + provider.model + '): ' + message);
+    }
   }
-  if(!result) throw new Error('Could not generate a tailored resume. Check Gemini settings, quota, and file readability, then try again.');
+  if(!result) throw new Error('Could not generate a tailored resume - ' + failures.join('; ') + '. Check the AI key/model above, quota, and file readability, then try again.');
 
   let docId, docxBase64;
   try{
@@ -815,7 +826,7 @@ function callOpportunityAnalysisProviders(opportunityText, config){
             text:{format:{type:'json_schema',name:'opportunity_analysis',strict:true,schema:schema}}
           })
         });
-        if(response.getResponseCode() !== 200) throw new Error('LLM request failed.');
+        if(response.getResponseCode() !== 200) throw new Error('OpenAI request failed (' + response.getResponseCode() + ').');
         const body = JSON.parse(response.getContentText());
         if(body.status !== 'completed' || !Array.isArray(body.output)) throw new Error('LLM response incomplete.');
         const content = body.output.filter(item => item.type === 'message').flatMap(item => item.content || []);
