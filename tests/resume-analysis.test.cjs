@@ -43,6 +43,22 @@ test('missing provider configuration queues safely and completed files are not r
   rows[1][9]='Review needed';
   assert.equal(c.analyzeResumeFile('abc','person@example.com'),'Review needed');assert.equal(rows.length,2);assert.equal(calls,0);
 });
+test('analyzeResumeFile uses the caller-supplied userAI key over the shared configuration, even when no shared key is configured',()=>{
+  const c=setup(); const rows=[Array(12).fill('')];
+  c.analysisConfiguration=()=>null; // no shared key configured at all
+  c.LockService={getScriptLock:()=>({waitLock(){},releaseLock(){}})};
+  c.resumeAnalysisSheet=()=>({getDataRange:()=>({getValues:()=>rows}),getLastRow:()=>rows.length,getRange:r=>({setValues:v=>rows[r-1]=v[0],setWrap:()=>({setVerticalAlignment(){}})})});
+  c.DriveApp={getFileById:()=>({getUrl:()=>'https://drive.google.com/file/d/abc/view'})};
+  c.resumeModelInput=()=>({type:'input_text',text:'resume'});
+  c.writeResumeAnalysisById=()=>{};
+  let usedProvider;
+  c.callResumeLLM=(file,provider)=>{usedProvider=provider;return sample();};
+  const status=c.analyzeResumeFile('abc','person@example.com',{provider:'openai',apiKey:'my-key',model:'gpt-4o-mini'});
+  assert.equal(status,'Complete');
+  assert.equal(usedProvider.provider,'openai');
+  assert.equal(usedProvider.apiKey,'my-key');
+  assert.equal(usedProvider.model,'gpt-4o-mini');
+});
 test('a failed resume analysis records the actual provider reason, not just generic guidance',()=>{
   const c=setup(); const rows=[Array(12).fill('')];
   c.analysisConfiguration=()=>({providers:[{provider:'gemini',model:'g'}]});
@@ -99,6 +115,17 @@ test('configuration keeps Gemini first and skips missing keys without disabling 
   assert.equal(c.analysisConfiguration().providers.map(x=>x.provider).join(','),'gemini,openai');
   delete p.RESUME_GEMINI_API_KEY;assert.equal(c.analysisConfiguration().providers[0].provider,'openai');
   p.RESUME_LLM_ENABLED='false';assert.equal(c.analysisConfiguration(),null);
+});
+test('resolveAiConfig_ prefers a valid userAI over the shared config, and falls back when absent or malformed',()=>{
+  const c=setup();const p={RESUME_LLM_ENABLED:'true',RESUME_GEMINI_API_KEY:'shared-key',RESUME_GEMINI_MODEL:'gemini-shared'};
+  c.PropertiesService={getScriptProperties:()=>({getProperty:k=>p[k]})};
+  const own=c.resolveAiConfig_({userAI:{provider:'openai',apiKey:'my-key',model:'gpt-4o-mini'}});
+  assert.deepEqual(Array.from(own.providers).map(x=>({provider:x.provider,apiKey:x.apiKey,model:x.model})),[{provider:'openai',apiKey:'my-key',model:'gpt-4o-mini'}]);
+  assert.equal(c.resolveAiConfig_({}).providers[0].apiKey,'shared-key'); // no userAI at all
+  assert.equal(c.resolveAiConfig_({userAI:{provider:'openai',apiKey:'','model':'gpt-4o-mini'}}).providers[0].apiKey,'shared-key'); // missing key
+  assert.equal(c.resolveAiConfig_({userAI:{provider:'openai',apiKey:'my-key',model:''}}).providers[0].apiKey,'shared-key'); // missing model
+  assert.equal(c.resolveAiConfig_({userAI:{provider:'anthropic',apiKey:'my-key',model:'m'}}).providers[0].apiKey,'shared-key'); // unsupported provider
+  assert.equal(c.resolveAiConfig_({userAI:{provider:'openai',apiKey:'my-key',model:'not a valid model!'}}).providers[0].apiKey,'shared-key'); // model fails the safe-chars check
 });
 const sampleFit=()=>({strengths:['Java'],weaknesses:['No cloud'],matchedSkills:['Java'],missingSkills:['AWS'],yearsAssessment:'Close on years',resumeYears:4,jdYearsRequired:5,projectEvidence:['Checkout service used Java'],reviewNotes:[]});
 test('comparison validates JD evidence and years; rejects empty strengths and weaknesses',()=>{
@@ -314,6 +341,18 @@ test('a failed opportunity analysis records the actual reason, not just generic 
   assert.equal(result.status,'Failed');
   assert.match(result.reviewNotes[0],/quota exceeded/);
   assert.match(writes[0].reviewNotes[0],/quota exceeded/);
+});
+test('analyzePostedOpportunity uses the caller-supplied userAI key over the shared configuration',()=>{
+  const c=setup();
+  c.clampText=(value,max)=>String(value||'').trim().slice(0,max||500);
+  c.PropertiesService={getScriptProperties:()=>({getProperty:key=>({RESUME_LLM_ENABLED:'true',RESUME_GEMINI_API_KEY:'shared',RESUME_GEMINI_MODEL:'gemini-shared'})[key]})};
+  let usedConfig;
+  c.callOpportunityAnalysisProviders=(text,config)=>{usedConfig=config;return {result:{yearsExperience:null,technicalSkills:[],nonTechnicalSkills:[],experienceBasis:'',reviewNotes:[]},method:'x'};};
+  c.opportunitySourcesToText=()=>'Need React';
+  c.writeOpportunityAnalysisRow_=()=>{};
+  c.analyzePostedOpportunity('poster@example.com',{requestId:'req-1',company:'Acme',text:'Need React',userAI:{provider:'openai',apiKey:'my-key',model:'gpt-4o-mini'}});
+  assert.equal(usedConfig.providers[0].provider,'openai');
+  assert.equal(usedConfig.providers[0].apiKey,'my-key');
 });
 
 function retryBackend(oppRows){

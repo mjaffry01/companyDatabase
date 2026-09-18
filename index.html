@@ -172,6 +172,14 @@
     font-size:14px; font-family:'IBM Plex Sans', sans-serif; outline:none; background: #fff;
   }
   .add-form input:focus{ border-color: var(--teal); }
+  #aiKeyForm label{ display:block; font-size:11.5px; color: var(--text-dim); margin:10px 0 4px; }
+  #aiKeyForm input[type="text"], #aiKeyForm input[type="password"]{
+    width:100%; padding: 9px 10px; border: 1px solid var(--paper-line); border-radius: 6px;
+    font-size:14px; font-family:'IBM Plex Sans', sans-serif; outline:none; background: #fff;
+  }
+  #aiKeyForm input:focus{ border-color: var(--teal); }
+  .ai-key-actions{ display:flex; gap:10px; margin-top:12px; flex-wrap:wrap; }
+  #aiKeyStatus{ font-size:12.5px; color:var(--text-dim); margin-top:8px; }
   .location-input-row{ display:flex; gap:8px; align-items:center; }
   .location-input-row input{ flex:1; min-width:0; }
   .location-input-row button{ flex-shrink:0; }
@@ -641,6 +649,22 @@
   </form>
   <button class="btn btn-ghost" onclick="openUserProfile()">Refresh profile</button>
   <button class="btn btn-ghost" onclick="logout()">Sign out</button>
+  <hr>
+  <form id="aiKeyForm">
+    <h3>Your own AI key (optional)</h3>
+    <p class="opportunity-hint">Used automatically for AI features - posting analysis, resume analysis, mentor search, job search, resume fit, and tailored resumes - instead of the shared key. Stored only in this browser, never on our servers.</p>
+    <label for="aiKeyProvider">Provider</label>
+    <select id="aiKeyProvider"><option value="gemini">Google Gemini</option><option value="openai">OpenAI</option></select>
+    <label for="aiKeyModel">Model</label>
+    <input type="text" id="aiKeyModel" placeholder="e.g. gemini-2.5-flash or gpt-4o-mini" maxlength="100">
+    <label for="aiKeyValue">API key</label>
+    <input type="password" id="aiKeyValue" autocomplete="off" maxlength="200">
+    <div class="ai-key-actions">
+      <button class="btn btn-primary" type="submit">Save my key</button>
+      <button class="btn btn-ghost" type="button" id="aiKeyClearButton">Use the shared key instead</button>
+    </div>
+    <p id="aiKeyStatus" role="status"></p>
+  </form>
 </dialog>
 <dialog id="editRequestDialog" aria-labelledby="requestTitle" style="width:min(94vw,520px);max-height:90vh;overflow:auto;border:0;border-radius:14px;padding:20px;">
   <form class="add-form" id="editRequestForm">
@@ -706,16 +730,37 @@ async function init(bootstrap){
   await connect(bootstrap);
 }
 
+// Optional "bring your own key" for AI features. Stored only in this browser's
+// localStorage - never written to any sheet or server - and attached to a
+// request only for the specific actions that actually call an LLM. A member
+// who hasn't set one keeps using the shared, script-configured key with no
+// change in behavior.
+const AI_ACTIONS = new Set(['saveOpportunity','uploadResume','searchMentors','searchJobs','compareResumeFit','generateTailoredResume']);
+function getUserAiConfig(){
+  try{
+    const parsed = JSON.parse(localStorage.getItem('userAiConfig') || 'null');
+    if(parsed && parsed.provider && parsed.apiKey && parsed.model) return parsed;
+  }catch(error){ /* corrupted value - treat as unset */ }
+  return null;
+}
+function setUserAiConfig(config){
+  try{ localStorage.setItem('userAiConfig', JSON.stringify(config)); }catch(error){ /* storage unavailable */ }
+}
+function clearUserAiConfig(){
+  try{ localStorage.removeItem('userAiConfig'); }catch(error){ /* storage unavailable */ }
+}
+
 async function contactApi(action, data){
   if(!window.currentCredential()) throw new Error('Please sign in first.');
   if(!window.APPS_SCRIPT_URL || window.APPS_SCRIPT_URL.indexOf('PASTE_') === 0) throw new Error('The contact book backend is not configured yet.');
   // Prefer the backend-issued sessionToken (long-lived, verified locally) once we have
   // one; fall back to the raw Google idToken only for the very first request of a sign-in.
   const auth = window.sessionToken ? {sessionToken: window.sessionToken} : {idToken: window.idToken};
+  const userAI = AI_ACTIONS.has(action) ? getUserAiConfig() : null;
   const response = await fetch(window.APPS_SCRIPT_URL, {
     method: 'POST',
     headers: {'Content-Type': 'text/plain;charset=utf-8'},
-    body: JSON.stringify({...auth, action, ...data}),
+    body: JSON.stringify({...auth, action, ...data, ...(userAI ? {userAI} : {})}),
     cache: 'no-store'
   });
   if(!response.ok) throw new Error('Server returned ' + response.status);

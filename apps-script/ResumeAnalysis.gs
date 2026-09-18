@@ -32,7 +32,7 @@ function analysisCell(value){
 function uploadResumeAndAnalyze(email, data){
   const uploaded = uploadResume(email, data); // File and upload log are committed first; lock is released.
   try{
-    uploaded.analysisStatus = analyzeResumeFile(analysisFileId(uploaded.driveUrl), data.email);
+    uploaded.analysisStatus = analyzeResumeFile(analysisFileId(uploaded.driveUrl), data.email, data.userAI);
   }catch(error){
     // The upload remains successful even if the analysis service is unavailable.
     uploaded.analysisStatus = 'Pending';
@@ -55,6 +55,26 @@ function analysisConfiguration(){
   return providers.length ? {providers:providers} : null;
 }
 
+// Optional "bring your own key": a request can carry data.userAI =
+// {provider, apiKey, model} to use that member's own Gemini/OpenAI key for
+// this one call instead of the shared script-configured key. It is never
+// persisted anywhere server-side - the browser is the only place it's ever
+// stored - and only used for the single request it arrived on. Falls back to
+// the shared analysisConfiguration() whenever it's absent or malformed, so
+// this stays fully opt-in.
+function resolveAiConfig_(data){
+  const userAI = data && data.userAI;
+  if(userAI && typeof userAI === 'object'){
+    const provider = userAI.provider === 'openai' ? 'openai' : (userAI.provider === 'gemini' ? 'gemini' : '');
+    const apiKey = typeof userAI.apiKey === 'string' ? userAI.apiKey.trim() : '';
+    const model = typeof userAI.model === 'string' ? userAI.model.trim() : '';
+    if(provider && apiKey && model && /^[a-zA-Z0-9._-]+$/.test(model)){
+      return {providers: [{provider:provider, apiKey:apiKey, model:model}]};
+    }
+  }
+  return analysisConfiguration();
+}
+
 function analysisMethod(config){
   return (config.providers || [config]).map(c => (c.provider === 'gemini' ? 'Gemini' : 'OpenAI') + ' / ' + c.model).join(' -> ');
 }
@@ -75,9 +95,9 @@ function callResumeProviders(file, config){
   throw new Error('All configured analysis providers failed (' + failures.join('; ') + ').');
 }
 
-function analyzeResumeFile(fileId, submittedEmail){
+function analyzeResumeFile(fileId, submittedEmail, userAI){
   if(!fileId) throw new Error('Resume file ID is missing.');
-  const config = analysisConfiguration();
+  const config = resolveAiConfig_({userAI: userAI});
   const lock = LockService.getScriptLock(); lock.waitLock(15000);
   let row;
   try{
@@ -484,7 +504,7 @@ function compareResumeToOpportunity(email, data){
   const hasFiles = Array.isArray(data.opportunityFiles) && data.opportunityFiles.length > 0;
   if(!pasted && !hasFiles) throw new Error('Paste the opportunity or attach a JD file or image.');
   const opportunityTitle = clampText(data.opportunityTitle, 200);
-  const config = analysisConfiguration();
+  const config = resolveAiConfig_(data);
   if(!config) return {ok:false,status:'Awaiting LLM setup'};
   const opportunityText = opportunitySourcesToText(data, config);
   const resumePart = comparisonResumePart(data);
@@ -667,7 +687,7 @@ function suggestGithubProjectsForMissingSkills_(missingSkills){
 }
 
 function generateTailoredResume(email, data){
-  const config = analysisConfiguration();
+  const config = resolveAiConfig_(data);
   if(!config) return {ok:false, status:'Awaiting LLM setup'};
   const opportunityTitle = clampText(data.opportunityTitle, 200);
   const opportunityText = opportunitySourcesToText(data, config);
@@ -822,7 +842,7 @@ function callOpportunityAnalysisProviders(opportunityText, config){
 function analyzePostedOpportunity(email, data){
   const requestId = String(data.requestId || '');
   const company = clampText(data.company, 200);
-  const config = analysisConfiguration();
+  const config = resolveAiConfig_(data);
   const sourceSummary = (clampText(data.text, 200) || (Array.isArray(data.files) && data.files[0] && data.files[0].name) || 'opportunity').slice(0,200);
 
   if(!config){

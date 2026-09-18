@@ -72,6 +72,11 @@ index.html (+ auth.js, auth-config.js)         apps-script/Code.gs
   company under Add a Referrer (`addCompany`) also tries to auto-discover its careers URL
   via the same Gemini/OpenAI setup as resume analysis, falling back to a Google search
   link if nothing confident is found.
+- **Bring your own AI key** (optional, see `BRING-YOUR-OWN-AI-KEY.md`): a member can save
+  their own Gemini/OpenAI key in their browser's localStorage — never on any server or
+  sheet — and it's used automatically instead of the shared script-configured key for the
+  six AI-calling actions (opportunity posting, resume upload, mentor search, job search,
+  resume fit, tailored resume). No key saved means no change from today's behavior.
 - `deprecated-firebase-backend/` is dead code from an earlier Firebase-based attempt
   (abandoned because it needed a paid Blaze plan). Not used, kept only for reference.
 

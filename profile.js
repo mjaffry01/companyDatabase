@@ -35,6 +35,29 @@ function renderUserProfile(profile){
   document.getElementById('profileDetails').hidden = false;
   document.getElementById('profileStatusForm').hidden = false;
 }
+function loadAiKeyForm(){
+  const config = getUserAiConfig();
+  document.getElementById('aiKeyProvider').value = config?.provider || 'gemini';
+  document.getElementById('aiKeyModel').value = config?.model || '';
+  document.getElementById('aiKeyValue').value = '';
+  document.getElementById('aiKeyValue').placeholder = config ? 'Key saved - enter a new one to replace it' : 'Paste your API key';
+  document.getElementById('aiKeyStatus').textContent = config
+    ? 'Using your own ' + (config.provider === 'openai' ? 'OpenAI' : 'Gemini') + ' key for AI features.'
+    : 'Using the shared key for AI features.';
+}
+document.getElementById('aiKeyForm').addEventListener('submit', event => {
+  event.preventDefault();
+  const provider = document.getElementById('aiKeyProvider').value;
+  const model = document.getElementById('aiKeyModel').value.trim();
+  const apiKey = document.getElementById('aiKeyValue').value.trim();
+  if(!model || !apiKey){ document.getElementById('aiKeyStatus').textContent = 'Enter both a model and an API key.'; return; }
+  setUserAiConfig({provider, model, apiKey});
+  loadAiKeyForm();
+});
+document.getElementById('aiKeyClearButton').addEventListener('click', () => {
+  clearUserAiConfig();
+  loadAiKeyForm();
+});
 async function openUserProfile(){
   if(!window.currentCredential()) return;
   const generation = ++profileGeneration;
@@ -43,6 +66,7 @@ async function openUserProfile(){
   document.getElementById('profileDetails').hidden = true;
   document.getElementById('profileStatusForm').hidden = true;
   document.getElementById('profileMessage').textContent = 'Loading your profile...';
+  loadAiKeyForm();
   try{
     const result = await contactApi('profile', {});
     if(generation !== profileGeneration) return;

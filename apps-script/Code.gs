@@ -1227,7 +1227,8 @@ function saveOpportunity(email, data, googleName){
         company: company,
         text: text,
         files: attachments.map(file => ({ name: file.name, dataBase64: file.dataBase64 })),
-        postedBy: profile.name
+        postedBy: profile.name,
+        userAI: data.userAI
       });
     }catch(error){
       // analyzePostedOpportunity already catches its own provider/analysis errors and
@@ -1769,7 +1770,7 @@ function searchMentors(email, data){
   const mentors = listMentors(email);
   if(!mentors.length) return { matches: [], method: 'none' };
 
-  const config = typeof analysisConfiguration === 'function' ? analysisConfiguration() : null;
+  const config = typeof resolveAiConfig_ === 'function' ? resolveAiConfig_(data) : null;
   if(config && typeof callGeminiJson === 'function'){
     try{ return callMentorSearchLLM(config, query, mentors); }
     catch(error){ console.error('AI mentor search failed, falling back to keyword match: ' + (error && error.message)); }
@@ -1857,7 +1858,7 @@ function searchJobs(email, data){
   const withLink = getCompanies().filter(c => isHttpUrl_(c.c));
   if(!withLink.length) return { results: [], method: 'none' };
 
-  const config = typeof analysisConfiguration === 'function' ? analysisConfiguration() : null;
+  const config = typeof resolveAiConfig_ === 'function' ? resolveAiConfig_(data) : null;
   let shortlist = null;
   let method = 'keyword';
   if(config && typeof callGeminiJson === 'function'){
